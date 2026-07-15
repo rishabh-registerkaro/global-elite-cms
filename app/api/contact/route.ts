@@ -1,0 +1,118 @@
+import { connectDB } from "@/app/lib/config/db";
+import ContactPageModel from "@/app/lib/models/contact";
+import { requireRole } from "@/app/lib/utils/authorization";
+import { CONTENT_ROLES } from "@/app/lib/constants/role";
+import { NextResponse, NextRequest } from "next/server";
+
+const getCorsHeaders = (origin: string | null) => {
+    const PRODUCTION_URL = process.env.PRODUCTION_URL || "https://magdee-coral.vercel.app";
+    const normalize = (u: string) => u.replace(/\/$/, "");
+
+    if (origin && normalize(origin) === normalize(PRODUCTION_URL)) {
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        };
+    }
+    if (origin && origin.startsWith("http://localhost:")) {
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        };
+    }
+    return {
+        "Access-Control-Allow-Origin": PRODUCTION_URL,
+        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    };
+};
+
+export async function OPTIONS(req: NextRequest) {
+    return NextResponse.json({}, { headers: getCorsHeaders(req.headers.get("origin")) });
+}
+
+// Public — frontend fetches this
+export async function GET(req: NextRequest) {
+    try {
+        await connectDB();
+        const doc = await ContactPageModel.findOne().lean();
+        const corsHeaders = getCorsHeaders(req.headers.get("origin"));
+
+        if (!doc) {
+            return NextResponse.json({ success: true, data: null }, { headers: corsHeaders });
+        }
+
+        return NextResponse.json(
+            { success: true, data: { metaTitle: doc.metaTitle, metaDescription: doc.metaDescription, content: doc.content } },
+            { headers: corsHeaders }
+        );
+    } catch (error) {
+        console.error("GET /api/contact error:", error);
+        return NextResponse.json({ success: false, message: "Failed to fetch contact page." }, { status: 500 });
+    }
+}
+
+// Create — only if no document exists yet
+export async function POST(req: NextRequest) {
+    try {
+        const authResult = await requireRole(req, CONTENT_ROLES);
+        if (authResult instanceof NextResponse) return authResult;
+
+        await connectDB();
+        const existing = await ContactPageModel.findOne();
+        if (existing) {
+            return NextResponse.json(
+                { success: false, message: "Contact page already exists. Use PATCH to update." },
+                { status: 409 }
+            );
+        }
+
+        const body = await req.json()
+        const doc = await ContactPageModel.create({
+            metaTitle: body.metaTitle,
+            metaDescription: body.metaDescription,
+            content: body.content ?? {},
+        });
+
+        return NextResponse.json({ success: true, data: doc }, { status: 201 });
+    } catch (error) {
+        console.error("POST /api/contact error:", error);
+        return NextResponse.json({ success: false, message: "Failed to create contact page." }, { status: 500 });
+    }
+}
+
+// Update — deep-merges content field
+export async function PATCH(req: NextRequest) {
+    try {
+        const authResult = await requireRole(req, CONTENT_ROLES);
+        if (authResult instanceof NextResponse) return authResult;
+
+        await connectDB();
+        const body = await req.json();
+
+        const doc = await ContactPageModel.findOne();
+        if (!doc) {
+            return NextResponse.json(
+                { success: false, message: "Contact page not found. Use POST to create it first." },
+                { status: 404 }
+            );
+        }
+
+        if (body.metaTitle !== undefined) doc.metaTitle = body.metaTitle;
+        if (body.metaDescription !== undefined) doc.metaDescription = body.metaDescription;
+        if (body.content !== undefined) {
+            // Replace the entire content object (CMS always sends the full shape)
+            doc.content = body.content;
+            doc.markModified("content"); // Required for Mixed fields
+        }
+
+        await doc.save();
+
+        return NextResponse.json({ success: true, data: { metaTitle: doc.metaTitle, metaDescription: doc.metaDescription, content: doc.content } });
+    } catch (error) {
+        console.error("PATCH /api/contact error:", error);
+        return NextResponse.json({ success: false, message: "Failed to update contact page." }, { status: 500 });
+    }
+}
