@@ -24,7 +24,7 @@ interface DashboardStats {
     slug: string;
     status: "draft" | "published";
     updatedAt: string;
-    heroSection?: { title?: string; heading?: string };
+    content?: { badge?: string; titleAccent?: string };
     author?: { username: string };
   }>;
 }
@@ -285,7 +285,7 @@ export default function Dashboard() {
                       <div className="flex items-center gap-2 mb-1">
                         <Layers className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
                         <h4 className="text-sm font-medium text-white truncate">
-                          {svc.heroSection?.title || svc.slug}
+                          {svc.content?.badge || svc.slug}
                         </h4>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-400 ml-5">

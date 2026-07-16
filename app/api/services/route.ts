@@ -1,13 +1,14 @@
-import { connectDB } from "@/app/lib/config/db";
-import ServicePageModel from "@/app/lib/models/service";
+import prisma from "@/app/lib/config/db";
+import { withMongoId, withMongoIds } from "@/app/lib/utils/serialize";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma, PublishStatus } from "@prisma/client";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { ADMIN_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags, serviceTags } from "@/app/lib/utils/revalidateFrontend";
 
 export async function POST(req: NextRequest) {
   try {
-    await connectDB();
     const body = await req.json();
     const authorResult = await requireRole(req, ADMIN_ROLES);
     if (authorResult instanceof NextResponse) {
@@ -25,16 +26,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (
-      !body?.slug ||
-      !body?.heroSection?.heading
-    ) {
+    if (!body?.slug || !body?.content || typeof body.content !== "object") {
       return NextResponse.json(
-        { message: "Missing required fields: slug and heroSection.heading are required" },
+        { message: "Missing required fields: slug and content are required" },
         { status: 400 }
       );
     }
-    const slugExists = await ServicePageModel.findOne({ slug: body.slug });
+    const slugExists = await prisma.servicePage.findUnique({
+      where: { slug: body.slug },
+    });
 
     if (slugExists) {
       return NextResponse.json(
@@ -43,15 +43,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const service = await ServicePageModel.create({
-      ...body,
-      author:authorId
+    const service = await prisma.servicePage.create({
+      data: {
+        slug: body.slug,
+        template: body.template ?? undefined,
+        metaTitle: body.metaTitle ?? undefined,
+        metaDescription: body.metaDescription ?? undefined,
+        content: body.content as Prisma.InputJsonValue,
+        status: (body.status ?? undefined) as PublishStatus | undefined,
+        authorId,
+      },
     });
+
+    await revalidateFrontendTags(serviceTags(service.slug));
+
+    const { authorId: serviceAuthorId, ...serviceRest } = service;
 
     return NextResponse.json(
       {
         message: "Service Added Successfully",
-        data: service,
+        data: withMongoId({ ...serviceRest, author: serviceAuthorId }),
       },
       { status: 201 }
     );
@@ -82,10 +93,14 @@ export async function GET(req:NextRequest) {
         { status: 401}
       );
     }
-    await connectDB();
-    const servicePages = await ServicePageModel.find().populate("author", "username").sort({
-      created: -1,
+    const rows = await prisma.servicePage.findMany({
+      include: { author: { select: { id: true, username: true } } },
+      orderBy: { createdAt: "desc" },
     });
+
+    const servicePages = withMongoIds(
+      rows.map(({ authorId, ...rest }) => rest)
+    );
 
     return NextResponse.json(
       { message: " Service Pages Fetched Successfully", servicePages },

@@ -23,14 +23,24 @@ interface Service {
   _id: string;
   slug: string;
   metaTitle?: string;
-  heroSection?: {
-    heading?: string;
+  template?: string;
+  content?: {
+    badge?: string;
+    titleLead?: string;
+    titleAccent?: string;
   };
   author: Author;
   status: "draft" | "published";
   createdAt?: string;
   updatedAt?: string;
 }
+
+const serviceTitle = (service: Service) => {
+  const heroTitle = [service.content?.titleLead, service.content?.titleAccent]
+    .filter(Boolean)
+    .join(" ");
+  return heroTitle || service.content?.badge || service.metaTitle || "";
+};
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
@@ -134,7 +144,7 @@ export default function ServicesPage() {
 
   // Filter services based on search and status
   const filteredServices = services.filter((service) => {
-    const title = service.heroSection?.heading || service.metaTitle || service.slug;
+    const title = serviceTitle(service) || service.slug;
     const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = !statusFilter || service.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -228,7 +238,7 @@ export default function ServicesPage() {
                   >
                     <TableCell className="text-slate-200 font-medium">
                       <div>
-                        {service.heroSection?.heading || service.metaTitle || "(no title)"}
+                        {serviceTitle(service) || "(no title)"}
                         {service.status === "draft" && (
                           <span className="ml-2 text-xs text-slate-400">- Draft</span>
                         )}

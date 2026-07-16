@@ -1,7 +1,9 @@
-import { connectDB } from "@/app/lib/config/db";
-import ServicePageModel from "@/app/lib/models/service";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma, PublishStatus } from "@prisma/client";
+import { revalidateFrontendTags, serviceTags } from "@/app/lib/utils/revalidateFrontend";
 
 export async function GET(
   req: NextRequest,
@@ -19,7 +21,6 @@ export async function GET(
             { status: 401}
           );
         }
-    await connectDB();
     const { slug } = await context.params;
     if (!slug) {
       return NextResponse.json(
@@ -28,17 +29,18 @@ export async function GET(
       );
     }
 
-    const service = await ServicePageModel.findOne({ slug }).lean();
+    const service = await prisma.servicePage.findUnique({ where: { slug } });
     if (!service) {
       return NextResponse.json(
         { message: "Service Not Found" },
         { status: 404 }
       );
     }
+    const { authorId, ...rest } = service;
     return NextResponse.json(
       {
         message: "Service Data fetched successfully",
-        data: service,
+        data: withMongoId({ ...rest, author: authorId }),
       },
       { status: 200 }
     );
@@ -68,11 +70,12 @@ export async function PUT(
         { status: 401 }
       );
     }
-    await connectDB();
     const { slug: newSlug, ...rest } = await req.json();
 
     if (newSlug && newSlug !== slug) {
-      const existing = await ServicePageModel.findOne({ slug: newSlug }).lean();
+      const existing = await prisma.servicePage.findUnique({
+        where: { slug: newSlug },
+      });
       if (existing) {
         return NextResponse.json(
           { message: `Slug "${newSlug}" is already taken. Please choose a different slug.` },
@@ -81,17 +84,42 @@ export async function PUT(
       }
     }
 
-    const updatedPageData = newSlug ? { slug: newSlug, ...rest } : rest;
-
-    const updated = await ServicePageModel.findOneAndUpdate({ slug },{ $set: updatedPageData },{ new: true });
-    if (!updated) {
+    const existingPage = await prisma.servicePage.findUnique({ where: { slug } });
+    if (!existingPage) {
       return NextResponse.json(
         { message: "Service Page not found" },
         { status: 404 }
       );
     }
+
+    const data: Prisma.ServicePageUpdateInput = {};
+    if (newSlug) data.slug = newSlug;
+    if (rest.template !== undefined) data.template = rest.template;
+    if (rest.metaTitle !== undefined) data.metaTitle = rest.metaTitle;
+    if (rest.metaDescription !== undefined) data.metaDescription = rest.metaDescription;
+    if (rest.content !== undefined) {
+      if (!rest.content || typeof rest.content !== "object") {
+        return NextResponse.json(
+          { message: "content must be a JSON object" },
+          { status: 400 }
+        );
+      }
+      data.content = rest.content as Prisma.InputJsonValue;
+    }
+    if (rest.status !== undefined) data.status = rest.status as PublishStatus;
+
+    const updated = await prisma.servicePage.update({
+      where: { slug },
+      data,
+    });
+
+    // Clear both the old and (possibly renamed) new slug on the frontend
+    const tags = new Set([...serviceTags(slug), ...serviceTags(updated.slug)]);
+    await revalidateFrontendTags([...tags]);
+
+    const { authorId: updatedAuthorId, ...updatedRest } = updated;
     return NextResponse.json(
-      { message: "Service Page updated successfully", updatedPage: updated },
+      { message: "Service Page updated successfully", updatedPage: withMongoId({ ...updatedRest, author: updatedAuthorId }) },
       { status: 200 }
     );
   } catch (error) {
@@ -124,18 +152,24 @@ export async function DELETE(
             { status: 401 }
           );
         }
-    await connectDB();
-    const deletePage = await ServicePageModel.findOneAndDelete({slug});
+    const existingPage = await prisma.servicePage.findUnique({ where: { slug } });
 
-    if (!deletePage) {
+    if (!existingPage) {
       return NextResponse.json(
         { message: "Service Page not found" },
         { status: 404 }
       );
     }
 
+    const deleted = await prisma.servicePage.delete({ where: { slug } });
+
+    // Remove the page from the live site immediately
+    await revalidateFrontendTags(serviceTags(slug));
+
+    const { authorId, ...rest } = deleted;
+
     return NextResponse.json(
-      { message: "Service Page deleted successfully", deletePage },
+      { message: "Service Page deleted successfully", deletePage: withMongoId({ ...rest, author: authorId }) },
       { status: 200 }
     );
   } catch (error) {
