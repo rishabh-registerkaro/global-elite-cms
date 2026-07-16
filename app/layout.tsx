@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Megdee-CMS Admin Panel",
-  description: "Megdee-CMS Admin Panel",
+  title: "Global Elite CMS Admin Panel",
+  description: "Global Elite CMS Admin Panel",
 };
 
 export default function RootLayout({

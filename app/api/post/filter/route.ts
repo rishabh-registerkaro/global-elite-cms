@@ -1,8 +1,9 @@
 // app/api/post/filter/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
-import Post from "@/app/lib/models/post";
-import mongoose from "mongoose";
+import prisma from "@/app/lib/config/db";
+import { Prisma } from "@prisma/client";
+import { withMongoIds } from "@/app/lib/utils/serialize";
 
 export const dynamic = 'force-dynamic';
 
@@ -21,62 +22,69 @@ export async function GET(req: NextRequest) {
     if (userResult instanceof NextResponse) return userResult;
 
     const userId = userResult.id?.toString();
-    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    if (!userId) {
       return NextResponse.json({ success: false, message: "Invalid session" }, { status: 401 });
     }
 
     // Build Query
-    const query: any = {};
+    const query: Prisma.PostWhereInput = {};
 
-    if (search) query.title = { $regex: search, $options: 'i' };
-    if (status) query.status = status;
+    if (search) query.title = { contains: search };
+    if (status) {
+      // An unknown status matched no documents in Mongo — keep that behavior
+      // (Prisma would otherwise reject the invalid enum value).
+      if (status !== "draft" && status !== "published") {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          pagination: { page, limit, total: 0, totalPages: 0, hasMore: false }
+        });
+      }
+      query.status = status;
+    }
 
     // Author Filter
     if (authorId) {
-      if (!mongoose.Types.ObjectId.isValid(authorId)) {
+      if (typeof authorId !== "string" || authorId.trim().length === 0) {
         return NextResponse.json({ success: false, message: "Invalid author ID" }, { status: 400 });
       }
-      query.author = new mongoose.Types.ObjectId(authorId);
+      query.authorId = authorId;
     } else {
       if (status === 'draft') {
-        query.author = new mongoose.Types.ObjectId(userId);
+        query.authorId = userId;
         query.status = 'draft';
       } else {
-        query.$or = [
+        query.OR = [
           { status: 'published' },
-          { author: new mongoose.Types.ObjectId(userId), status: 'draft' }
+          { authorId: userId, status: 'draft' }
         ];
       }
     }
 
-
-
-    // MINIMAL & FAST Projection — only what you asked for
-    const projection = {
-      title: 1,
-      slug: 1,
-      status: 1,
-      publishedAt: 1,
-      createdAt: 1,
-      author: 1,
-    };
-
     const [posts, total] = await Promise.all([
-      Post.find(query)
-        .select(projection)
-        .populate('author', 'username')           // only username needed
-        .sort({ publishedAt: -1, _id: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean()
-        .exec(),
+      prisma.post.findMany({
+        where: query,
+        // MINIMAL & FAST Projection — only what you asked for
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          status: true,
+          publishedAt: true,
+          createdAt: true,
+          author: { select: { id: true, username: true } }, // only username needed
+        },
+        orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
 
-      Post.countDocuments(query).exec()
+      prisma.post.count({ where: query })
     ]);
 
     return NextResponse.json({
       success: true,
-      data: posts,
+      data: withMongoIds(posts),
       pagination: {
         page,
         limit,

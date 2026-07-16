@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import Registration from "@/app/lib/models/registration";
+import prisma from "@/app/lib/config/db";
+import { withMongoIds } from "@/app/lib/utils/serialize";
+import { Prisma, PageSource } from "@prisma/client";
 import { sendRegistrationNotification } from "@/app/lib/config/email";
 import { getCorsHeaders } from "@/app/lib/utils/corsHeader";
 import { requireRole } from "@/app/lib/utils/authorization";
@@ -14,7 +15,6 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req);
   try {
-    await connectDB();
     const body = await req.json();
     const { email, pageSource, pageUrl, metadata } = body;
 
@@ -33,11 +33,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const registration = await Registration.create({
-      email: email.trim().toLowerCase(),
-      pageSource,
-      pageUrl,
-      metadata: metadata ?? {},
+    const registration = await prisma.registration.create({
+      data: {
+        email: email.trim().toLowerCase(),
+        pageSource: pageSource as PageSource,
+        pageUrl,
+        metadata: (metadata ?? {}) as Prisma.InputJsonValue,
+      },
     });
 
     // Fire-and-forget — don't block response on email
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json(
-      { success: true, message: "Registered successfully", id: registration._id.toString() },
+      { success: true, message: "Registered successfully", id: registration.id },
       { status: 201, headers: corsHeaders }
     );
   } catch (error: any) {
@@ -65,28 +67,41 @@ export async function GET(req: NextRequest) {
     const userResult = await requireRole(req, ADMIN_ROLES);
     if (userResult instanceof NextResponse) return userResult;
 
-    await connectDB();
-
     const { searchParams } = new URL(req.url);
     const page  = Math.max(1, parseInt(searchParams.get("page")  ?? "1"));
     const limit = Math.max(1, parseInt(searchParams.get("limit") ?? "20"));
     const skip  = (page - 1) * limit;
     const source = searchParams.get("source");
 
-    const query: Record<string, string> = {};
-    if (source && source !== "all") query.pageSource = source;
+    const validSources = ["home", "contact", "about", "blog"];
+    // Invalid enum value in the filter would make Prisma throw — Mongoose
+    // simply matched nothing, so mimic that.
+    const noMatch =
+      source !== null && source !== "all" && !validSources.includes(source);
 
-    const [registrations, total] = await Promise.all([
-      Registration.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      Registration.countDocuments(query),
-    ]);
+    const query: Prisma.RegistrationWhereInput = {};
+    if (source && source !== "all" && validSources.includes(source)) {
+      query.pageSource = source as PageSource;
+    }
+
+    const [registrations, total] = noMatch
+      ? [[], 0]
+      : await Promise.all([
+          prisma.registration.findMany({
+            where: query,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: limit,
+          }),
+          prisma.registration.count({ where: query }),
+        ]);
 
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json(
       {
         success: true,
-        registrations,
+        registrations: withMongoIds(registrations),
         pagination: {
           currentPage: page,
           totalPages,

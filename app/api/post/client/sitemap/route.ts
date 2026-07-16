@@ -1,5 +1,4 @@
-import { connectDB } from "@/app/lib/config/db";
-import Post from "@/app/lib/models/post";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 
 const getCorsHeaders = (origin: string | null) => {
@@ -19,15 +18,14 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     try {
-        await connectDB();
+        const posts = await prisma.post.findMany({
+            where: { status: "published" },
+            select: { id: true, slug: true, updatedAt: true },
+            orderBy: { updatedAt: "desc" },
+        });
 
-        const posts = await Post.find({ status: "published" })
-            .select("_id slug updatedAt")
-            .sort({ updatedAt: -1 })
-            .lean();
-
-        const data = posts.map((p: any) => ({
-            id: p._id.toString(),
+        const data = posts.map((p) => ({
+            id: p.id,
             slug: p.slug,
             updatedAt: p.updatedAt,
         }));

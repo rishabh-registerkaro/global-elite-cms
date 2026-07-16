@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
+import prisma from "@/app/lib/config/db";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { ADMIN_ROLES } from "@/app/lib/constants/role";
 import bcrypt from "bcrypt";
@@ -14,10 +13,10 @@ export async function POST(req: NextRequest) {
 
         const currentUser = userResult;
 
-        await connectDB();
-
         const body = await req.json();
-        const { username, email, password, role } = body;
+        const { username, password, role } = body;
+        // Mongoose schema had lowercase:true on email — normalize on write
+        const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : body.email;
 
         if (!username || !email || !password || !role) {
             return NextResponse.json(
@@ -51,7 +50,10 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+        const existingUser = await prisma.user.findFirst({
+            where: { OR: [{ email }, { username }] },
+            select: { id: true },
+        });
         if (existingUser) {
             return NextResponse.json(
                 { success: false, message: "Username or email already exists" },
@@ -61,11 +63,14 @@ export async function POST(req: NextRequest) {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const newUser = await User.create({
-            username,
-            email,
-            password: hashedPassword,
-            role,
+        const newUser = await prisma.user.create({
+            data: {
+                username,
+                email,
+                password: hashedPassword,
+                role,
+            },
+            select: { id: true, username: true, email: true, role: true },
         });
 
         return NextResponse.json(
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest) {
                 success: true,
                 message: "User created successfully",
                 user: {
-                    id: newUser._id.toString(),
+                    id: newUser.id,
                     username: newUser.username,
                     email: newUser.email,
                     role: newUser.role,
@@ -83,7 +88,7 @@ export async function POST(req: NextRequest) {
         );
     } catch (error: any) {
         console.error("Create user error:", error);
-        if (error.code === 11000) {
+        if (error.code === "P2002") {
             return NextResponse.json(
                 { success: false, message: "Username or email already exists" },
                 { status: 409 }
@@ -108,8 +113,6 @@ export async function GET(req: NextRequest){
             return NextResponse.json({success: false, message: "Unauthorized User Access"},{status: 401})
         }
 
-        await connectDB();
-
         // get query parameters
         const {searchParams} = new URL(req.url);
 
@@ -124,39 +127,39 @@ export async function GET(req: NextRequest){
         const sortOrder = searchParams.get('sortOrder') || 'desc'; // asc or desc
 
         // building query
-        const query: any = {};
+        const where: any = {};
 
         if(search) {
-            query.$or = [
-                {username: {$regex: search, $options: "i"}},
-                {email: {$regex: search, $options:"i"}}
-            ]
+            where.OR = [
+                { username: { contains: search } },
+                { email: { contains: search } },
+            ];
         }
 
         // Building sort object
-        const sort : any = {};
+        const orderBy: any = {};
         if(sortBy === "username" || sortBy === "email" || sortBy === "createdAt"){
-            sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+            orderBy[sortBy] = sortOrder === "asc" ? "asc" : "desc";
         }else{
-            sort.createdAt = -1;
+            orderBy.createdAt = "desc";
         }
 
         // Optimized: fetch users and total count in parallel
         const [users, total] = await Promise.all([
-            User.find(query)
-            .select('_id username email createdAt updatedAt role')
-            .sort(sort)
-            .skip(skip)
-            .limit(limit)
-            .lean() // Use lean() for better performance
-            .exec(),
+            prisma.user.findMany({
+                where,
+                select: { id: true, username: true, email: true, createdAt: true, updatedAt: true, role: true },
+                orderBy,
+                skip,
+                take: limit,
+            }),
 
-            User.countDocuments(query).exec()
+            prisma.user.count({ where }),
         ])
 
         // format users data
         const formattedUsers = users.map((user)=> ({
-            id: user._id.toString(),
+            id: user.id,
             username: user.username,
             email: user.email,
             createdAt: user.createdAt,

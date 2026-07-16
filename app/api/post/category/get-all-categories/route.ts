@@ -1,11 +1,9 @@
-import { connectDB } from "@/app/lib/config/db";
-import Category from "@/app/lib/models/category";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
     const userResult = await getCurrentUser(req);
     if (userResult instanceof NextResponse) {
       return userResult;
@@ -18,20 +16,28 @@ export async function GET(req: NextRequest) {
         { status: 401 }
       );
     }
-    
+
     // Fetch all categories
-    const categories = await Category.find()
-      .select('_id name slug color createdAt updatedAt parentCategory')
-      .sort({ createdAt: -1 })
-      .lean();
+    const categories = await prisma.category.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        color: true,
+        createdAt: true,
+        updatedAt: true,
+        parentId: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
     // Format the response
     const formattedCategories = categories.map((category) => ({
-      _id: category._id.toString(),
+      _id: category.id,
       name: category.name,
       slug: category.slug,
-      color: (category as any).color || "",
-      parentCategory: category.parentCategory ? category.parentCategory.toString() : null,
+      color: category.color || "",
+      parentCategory: category.parentId ? category.parentId : null,
       createdAt: category.createdAt,
       updatedAt: category.updatedAt,
     }));

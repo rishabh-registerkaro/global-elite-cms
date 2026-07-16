@@ -1,20 +1,24 @@
+import { PrismaClient } from "@prisma/client";
 
-import mongoose from "mongoose";
+// Prisma client singleton — survives Next.js hot-reload in dev and keeps a
+// small connection pool (configure via ?connection_limit= in DATABASE_URL,
+// keep it low on Hostinger shared MySQL).
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-const MONGO_URI=process.env.MONGO_URI as string;
-const DB_NAME=process.env.DB_NAME as string;
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  });
 
-export const connectDB=async()=>{
-    try{
-      if(mongoose.connection.readyState>=1){
-        console.log("MongoDB is already connected");
-        return;
-      }
-      await mongoose.connect(MONGO_URI,{dbName:DB_NAME});
-      console.log("MongoDB connection established successfully");
-    }
-    catch(error){
-        console.log("MongoDB connection failed",error);
-        throw error;
-    }
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }
+
+/**
+ * @deprecated Mongoose-era connection helper. Prisma connects lazily on first
+ * query — this is kept only so stale imports don't crash and does nothing.
+ */
+export const connectDB = async () => {};
+
+export default prisma;

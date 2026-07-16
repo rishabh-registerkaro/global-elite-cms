@@ -99,7 +99,7 @@ export async function sendRegistrationNotification(data: {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="font-size:13px;font-weight:700;color:#cbd5e1;letter-spacing:0.02em;">
-                    <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>MagDee CMS
+                    <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>Global Elite CMS
                   </td>
                   <td align="right" style="font-size:12px;color:#64748b;font-weight:500;">${esc(now)} IST</td>
                 </tr>
@@ -147,10 +147,10 @@ export async function sendRegistrationNotification(data: {
           <!-- Footer -->
           <tr>
             <td style="padding:24px 6px 0;text-align:center;">
-              <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">MAGDEE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
+              <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">GLOBAL ELITE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
               <p style="margin:0;font-size:11px;color:#64748b;line-height:1.6;">
                 Automated notification · Please do not reply to this email<br>
-                You're receiving this because you're listed as an admin contact for MagDee CMS.
+                You're receiving this because you're listed as an admin contact for Global Elite CMS.
               </p>
             </td>
           </tr>
@@ -208,7 +208,7 @@ export async function sendOTP(email: string, otp: string) {
         const mailOptions = {
             from: process.env.SMTP_FROM,
             to: email,
-            subject: "Your MagDee CMS password reset code",
+            subject: "Your Global Elite CMS password reset code",
             html: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -222,7 +222,7 @@ export async function sendOTP(email: string, otp: string) {
 
     <!-- Preheader (inbox preview line) -->
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">
-        Your MagDee CMS verification code is ${safeOtp}. It expires in 10 minutes.
+        Your Global Elite CMS verification code is ${safeOtp}. It expires in 10 minutes.
     </div>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0b1220;padding:40px 16px;">
@@ -236,7 +236,7 @@ export async function sendOTP(email: string, otp: string) {
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                 <tr>
                                     <td style="font-size:13px;font-weight:700;color:#cbd5e1;letter-spacing:0.02em;">
-                                        <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>MagDee CMS
+                                        <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>Global Elite CMS
                                     </td>
                                     <td align="right" style="font-size:11px;color:#64748b;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;">Security</td>
                                 </tr>
@@ -259,7 +259,7 @@ export async function sendOTP(email: string, otp: string) {
                                     <td style="padding:32px 36px 4px;">
                                         <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#818cf8;">Password reset</p>
                                         <h1 style="margin:0;font-size:24px;line-height:1.3;font-weight:700;color:#f8fafc;">Verify your identity</h1>
-                                        <p style="margin:12px 0 0;font-size:14px;color:#94a3b8;line-height:1.6;">We received a request to reset the password for your MagDee CMS account. Use the one-time code below to continue. If this wasn't you, you can safely ignore this email.</p>
+                                        <p style="margin:12px 0 0;font-size:14px;color:#94a3b8;line-height:1.6;">We received a request to reset the password for your Global Elite CMS account. Use the one-time code below to continue. If this wasn't you, you can safely ignore this email.</p>
                                     </td>
                                 </tr>
                             </table>
@@ -289,7 +289,7 @@ export async function sendOTP(email: string, otp: string) {
                                             <tr>
                                                 <td style="padding:14px 16px;">
                                                     <p style="margin:0;font-size:13px;color:#fcd34d;line-height:1.55;">
-                                                        <strong style="color:#fde68a;">Don't share this code.</strong> <span style="color:#fbbf24;">MagDee staff will never ask for your verification code. If you didn't request a reset, your password will remain unchanged.</span>
+                                                        <strong style="color:#fde68a;">Don't share this code.</strong> <span style="color:#fbbf24;">Global Elite staff will never ask for your verification code. If you didn't request a reset, your password will remain unchanged.</span>
                                                     </p>
                                                 </td>
                                             </tr>
@@ -315,7 +315,7 @@ export async function sendOTP(email: string, otp: string) {
                     <!-- Footer -->
                     <tr>
                         <td style="padding:24px 6px 0;text-align:center;">
-                            <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">MAGDEE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
+                            <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">GLOBAL ELITE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
                             <p style="margin:0;font-size:11px;color:#64748b;line-height:1.6;">
                                 Automated security message · Please do not reply to this email
                             </p>

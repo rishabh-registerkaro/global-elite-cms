@@ -1,7 +1,5 @@
-import { NextResponse, NextRequest } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
-import jwt from "jsonwebtoken";
+import { NextResponse } from "next/server";
+import prisma from "@/app/lib/config/db";
 import bcrypt from "bcrypt";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 
@@ -39,10 +37,11 @@ export async function PUT(req) {
             }, { status: 400 });
         }
 
-        // connecting DB
-        await connectDB();
-
-        const user = await User.findById(userId).select("+password");
+        // Fetch WITH password (needed for comparison); never returned to client
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, password: true },
+        });
         if (!user) {
             return NextResponse.json({
                 success: false,
@@ -50,7 +49,7 @@ export async function PUT(req) {
             }, { status: 404 });
         }
 
-        const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
         if (!isCurrentPasswordValid) {
             return NextResponse.json({
                 success: false,
@@ -70,11 +69,13 @@ export async function PUT(req) {
         // Hash new password
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
-         // Update password
-         user.password = hashedNewPassword;
-         await user.save();
+        // Update password
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedNewPassword },
+        });
 
-         return NextResponse.json({
+        return NextResponse.json({
             success: true,
             message: "Password changed successfully.",
         }, { status: 200 });

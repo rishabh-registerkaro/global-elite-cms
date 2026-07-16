@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
+import prisma from "@/app/lib/config/db";
 
 export const getCurrentUser = async (req: NextRequest) => {
   try {
@@ -20,15 +19,17 @@ export const getCurrentUser = async (req: NextRequest) => {
       role: string;
     };
 
-    // Connect to database and verify user exists
-    await connectDB();
-    const user = await User.findById(decoded.id).select("_id role");
+    // Verify user exists in database
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, username: true, role: true },
+    });
 
     if (!user) {
       return NextResponse.json(
-        { 
-          success: false, 
-          message: "User not found. Please login again." 
+        {
+          success: false,
+          message: "User not found. Please login again."
         },
         { status: 401 }
       );
@@ -36,7 +37,7 @@ export const getCurrentUser = async (req: NextRequest) => {
 
     // Return user data (verified from database) - same format as before
     return {
-      id: user._id.toString(),
+      id: user.id,
       username: user.username,
       role: user.role
     };
@@ -44,9 +45,9 @@ export const getCurrentUser = async (req: NextRequest) => {
     // Handle JWT errors
     if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
       return NextResponse.json(
-        { 
-          success: false, 
-          message: "Invalid or expired token. Please login again." 
+        {
+          success: false,
+          message: "Invalid or expired token. Please login again."
         },
         { status: 401 }
       );
@@ -55,9 +56,9 @@ export const getCurrentUser = async (req: NextRequest) => {
     // Handle other errors
     console.error("getCurrentUser error:", error);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: "Authentication failed. Please login again." 
+      {
+        success: false,
+        message: "Authentication failed. Please login again."
       },
       { status: 401 }
     );

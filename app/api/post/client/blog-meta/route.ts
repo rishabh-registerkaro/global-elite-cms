@@ -1,9 +1,8 @@
-import { connectDB } from "@/app/lib/config/db";
-import Post from "@/app/lib/models/post";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 
 const getCorsHeaders = (origin: string | null) => {
-    const PRODUCTION_URL = process.env.PRODUCTION_URL || "https://magdee-coral.vercel.app";
+    const PRODUCTION_URL = process.env.PRODUCTION_URL || "https://global-elite-cms-coral.vercel.app";
     const normalize = (url: string) => url.replace(/\/$/, "");
     if (normalize(origin ?? "") === normalize(PRODUCTION_URL)) {
         return {
@@ -34,46 +33,32 @@ export async function OPTIONS(req: NextRequest) {
 // needed for sidebar navigation and prev/next links. No content field.
 export async function GET(req: NextRequest) {
     try {
-        await connectDB();
+        const rows = await prisma.post.findMany({
+            where: { status: "published" },
+            select: {
+                slug: true,
+                title: true,
+                publishedAt: true,
+                updatedAt: true,
+                categories: { select: { name: true, slug: true, color: true } },
+            },
+        });
 
-        const posts = await Post.aggregate([
-            { $match: { status: "published" } },
-            {
-                $addFields: {
-                    mostRecentActivity: {
-                        $cond: {
-                            if: { $gt: ["$updatedAt", "$publishedAt"] },
-                            then: "$updatedAt",
-                            else: "$publishedAt",
-                        },
-                    },
-                },
-            },
-            { $sort: { mostRecentActivity: -1 } },
-            {
-                $lookup: {
-                    from: "categories",
-                    localField: "category",
-                    foreignField: "_id",
-                    as: "category",
-                },
-            },
-            {
-                $project: {
-                    _id: 0,
-                    slug: 1,
-                    title: 1,
-                    publishedAt: 1,
-                    category: {
-                        $map: {
-                            input: "$category",
-                            as: "cat",
-                            in: { name: "$$cat.name", slug: "$$cat.slug", color: "$$cat.color" },
-                        },
-                    },
-                },
-            },
-        ]);
+        // Sort by most recent activity (the later of updatedAt / publishedAt)
+        const mostRecentActivity = (p: { updatedAt: Date | null; publishedAt: Date | null }) =>
+            Math.max(p.updatedAt?.getTime() ?? 0, p.publishedAt?.getTime() ?? 0);
+        rows.sort((a, b) => mostRecentActivity(b) - mostRecentActivity(a));
+
+        const posts = rows.map((post) => ({
+            slug: post.slug,
+            title: post.title,
+            publishedAt: post.publishedAt,
+            category: post.categories.map((cat) => ({
+                name: cat.name,
+                slug: cat.slug,
+                color: cat.color,
+            })),
+        }));
 
         const origin = req.headers.get("origin");
         return NextResponse.json(

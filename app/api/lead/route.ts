@@ -1,10 +1,7 @@
-import { connectDB } from "@/app/lib/config/db";
-import Lead from "@/app/lib/models/lead";
-import ServicePackage from "@/app/lib/models/package";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { getCorsHeaders } from "@/app/lib/utils/corsHeader";
-import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { ADMIN_ROLES } from "@/app/lib/constants/role";
 
@@ -16,7 +13,6 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req);
   try {
-    await connectDB();
     const body = await req.json();
 
     // Validate required fields
@@ -42,34 +38,40 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if lead already exists
-    let lead = await Lead.findOne({ email: body.email });
+    let lead = await prisma.lead.findFirst({ where: { email: body.email } });
 
     if (lead) {
       // Update existing lead only if no payment exists
       if (!lead.hasPayment) {
-        lead.name = body.name;
-        lead.phoneNo = body.phoneNo;
-        lead.companyName = body.companyName;
-        lead.region = body.region;
-        lead.serviceSelected = body.serviceSelected;
-        lead.message = body.message;
-        lead.hasPayment = false;
-        lead.status = "new";
-        await lead.save();
+        lead = await prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            name: body.name,
+            phoneNo: body.phoneNo,
+            companyName: body.companyName,
+            region: body.region,
+            serviceSelected: body.serviceSelected,
+            message: body.message,
+            hasPayment: false,
+            status: "new",
+          },
+        });
       }
     } else {
       // Create new lead
-      lead = await Lead.create({
-        name: body.name,
-        email: body.email,
-        phoneNo: body.phoneNo,
-        companyName: body.companyName,
-        region: body.region,
-        serviceSelected: body.serviceSelected,
-        message: body.message,
-        hasPayment: false,
-        status: "new",
-        leadSource: "Website",
+      lead = await prisma.lead.create({
+        data: {
+          name: body.name,
+          email: body.email,
+          phoneNo: body.phoneNo,
+          companyName: body.companyName,
+          region: body.region,
+          serviceSelected: body.serviceSelected,
+          message: body.message,
+          hasPayment: false,
+          status: "new",
+          leadSource: "Website",
+        },
       });
     }
 
@@ -77,8 +79,8 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         message: "Lead created successfully",
-        leadId: lead._id.toString(),
-        data: lead,
+        leadId: lead.id,
+        data: withMongoId(lead),
       },
       {
         status: 201,
@@ -118,27 +120,26 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await connectDB();
-    
-    // Ensure ServicePackage model is registered before populate
-    // This prevents "Schema hasn't been registered" errors
-    if (!mongoose.models.ServicePackage) {
-      // Model will be registered when imported, but this ensures it's available
-      ServicePackage;
-    }
-    
     const { searchParams } = new URL(req.url);
-    
+
     // Pagination parameters
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
-    
+
     // Filter parameters
     const status = searchParams.get("status");
     const paymentStatus = searchParams.get("paymentStatus");
     const region = searchParams.get("region");
     const hasPayment = searchParams.get("hasPayment");
+
+    // Invalid enum values would make Prisma throw — Mongoose simply matched
+    // nothing, so mimic that with an impossible filter.
+    const LEAD_STATUSES = ["new", "contacted", "converted", "lost"];
+    const PAYMENT_STATUSES = ["pending", "success", "failed"];
+    const noMatch =
+      (status !== null && !LEAD_STATUSES.includes(status)) ||
+      (paymentStatus !== null && !PAYMENT_STATUSES.includes(paymentStatus));
 
     const query: any = {};
     if (status) {
@@ -155,19 +156,30 @@ export async function GET(req: NextRequest) {
     }
 
     // Get total count for pagination
-    const total = await Lead.countDocuments(query);
-    
+    const total = noMatch ? 0 : await prisma.lead.count({ where: query });
+
     // Fetch leads with pagination
-    const leads = await Lead.find(query)
-      .populate({
-        path: "packageId",
-        select: "packageName serviceName",
-        model: ServicePackage, // Explicitly specify the model
-      })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    const leads = noMatch
+      ? []
+      : await prisma.lead.findMany({
+          where: query,
+          include: {
+            package: { select: { id: true, packageName: true, serviceName: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        });
+
+    // Preserve the Mongoose populate("packageId") contract: the API field
+    // `packageId` holds the populated package object (or null).
+    const serializedLeads = leads.map((lead) => {
+      const { package: pkg, ...rest } = lead;
+      return withMongoId({
+        ...rest,
+        packageId: pkg ? withMongoId(pkg) : rest.packageId,
+      });
+    });
 
     // Calculate pagination info
     const totalPages = Math.ceil(total / limit);
@@ -179,7 +191,7 @@ export async function GET(req: NextRequest) {
         success: true,
         message: "Fetched Leads Data successfully",
         leadCount: total,
-        leads: leads,
+        leads: serializedLeads,
         pagination: {
           currentPage: page,
           totalPages,

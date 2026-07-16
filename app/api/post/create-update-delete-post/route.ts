@@ -1,11 +1,8 @@
-import { connectDB } from "@/app/lib/config/db";
-import Post from "@/app/lib/models/post";
-import Category from "@/app/lib/models/category";
+import prisma from "@/app/lib/config/db";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
-import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
-import { ensureDefaultCategory } from "@/app/lib/utils/DefaultCategory"; // Add this import
-
+import { withMongoId } from "@/app/lib/utils/serialize";
+import { ensureDefaultCategory } from "@/app/lib/utils/DefaultCategory";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES, EDITOR_ROLES } from "@/app/lib/constants/role";
@@ -13,9 +10,6 @@ import { CONTENT_ROLES, EDITOR_ROLES } from "@/app/lib/constants/role";
 
 export async function POST(req: NextRequest) {
   try {
-    // Connect to database
-    await connectDB();
-
     // Get current user (for authentication and fallback author)
     const authorResult = await requireRole(req, EDITOR_ROLES);
     if (authorResult instanceof NextResponse) {
@@ -42,7 +36,6 @@ export async function POST(req: NextRequest) {
       content,
       featuredImage,
       category,
-      tags,
       status,
       publishedAt,
       faq_items,
@@ -53,10 +46,10 @@ export async function POST(req: NextRequest) {
 
     // Use provided author if available, otherwise use authenticated user's ID
     let authorId = authenticatedUserId;
-    
+
     if (author && author.trim()) {
       // Validate author ID format
-      if (!mongoose.Types.ObjectId.isValid(author.trim())) {
+      if (typeof author !== "string" || author.trim().length === 0) {
         return NextResponse.json(
           {
             success: false,
@@ -79,8 +72,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate status enum (Mongoose used to reject this as a ValidationError)
+    if (status !== undefined && status !== null && !["draft", "published"].includes(status)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Validation error",
+          errors: [`\`${status}\` is not a valid enum value for path \`status\`.`],
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if slug already exists
-    const existingPost = await Post.findOne({ slug });
+    const existingPost = await prisma.post.findUnique({ where: { slug } });
     if (existingPost) {
       return NextResponse.json(
         {
@@ -107,42 +112,34 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare post data
-    const postData: any = {
+    const postData: Prisma.PostUncheckedCreateInput = {
       title: title.trim(),
       slug: slug.toLowerCase().trim(),
       content: content.trim(),
-      author: authorId,
+      authorId: authorId,
       status: status || "draft",
     };
 
     // Add optional fields
     if (excerpt) postData.excerpt = excerpt.trim();
     if (featuredImage) postData.featuredImage = featuredImage.trim();
-    
+
     // Handle category - assign to "Others" if no category is selected
+    let categoryIds: string[] = [];
     if (category) {
-      // Handle category array - convert to ObjectIds and validate
+      // Handle category array and validate
       const categoryArray = Array.isArray(category) ? category : [category];
       const validCategoryIds = categoryArray.filter(Boolean);
 
       // Validate all category IDs exist
       if (validCategoryIds.length > 0) {
-        const validObjectIds = validCategoryIds
-          .map((id: string) => {
-            try {
-              return new mongoose.Types.ObjectId(id);
-            } catch {
-              return null;
-            }
-          })
-          .filter((id): id is mongoose.Types.ObjectId => id !== null);
-
         // Verify all categories exist in database
-        const existingCategories = await Category.find({
-          _id: { $in: validObjectIds }
-        }).select('_id');
+        const existingCategories = await prisma.category.findMany({
+          where: { id: { in: validCategoryIds } },
+          select: { id: true },
+        });
 
-        const existingIds = existingCategories.map(cat => cat._id.toString());
+        const existingIds = existingCategories.map((cat) => cat.id);
         const invalidIds = validCategoryIds.filter((id: string) => !existingIds.includes(id));
 
         if (invalidIds.length > 0) {
@@ -155,49 +152,47 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        postData.category = validObjectIds;
+        categoryIds = validCategoryIds;
       } else {
         // Empty array provided, assign to "Others"
         const othersCategoryId = await ensureDefaultCategory();
-        postData.category = [othersCategoryId];
+        categoryIds = [othersCategoryId];
       }
     } else {
       // No category provided, assign to "Others"
       const othersCategoryId = await ensureDefaultCategory();
-      postData.category = [othersCategoryId];
+      categoryIds = [othersCategoryId];
     }
-    if (tags && Array.isArray(tags)) {
-      postData.tags = tags.filter(Boolean).map((tag: string) => tag.trim());
-    }
+    postData.categories = { connect: categoryIds.map((id) => ({ id })) };
 
     // Add FAQ items if provided
     if (faq_items && Array.isArray(faq_items) && faq_items.length > 0) {
-      postData.faq_items = faq_items.map((faq: any) => ({
+      postData.faqItems = faq_items.map((faq: any) => ({
         question: faq.question.trim(),
         answer: faq.answer.trim(),
-      }));
+      })) as Prisma.InputJsonValue;
     }
 
     // Add additional fields (ACF-style custom fields)
     if (additionalFields && typeof additionalFields === "object") {
-      postData.additionalFields = additionalFields;
+      postData.additionalFields = additionalFields as Prisma.InputJsonValue;
     }
 
     // Add schema (Array of schema objects)
     if (schema !== undefined) {
       if (schema === null) {
-        postData.schema = null;
+        postData.schemaJson = Prisma.DbNull;
       } else if (Array.isArray(schema)) {
         // Filter out any null/undefined values and ensure all items are objects
-        postData.schema = schema.filter((s: any) => s !== null && s !== undefined && typeof s === "object");
+        postData.schemaJson = schema.filter((s: any) => s !== null && s !== undefined && typeof s === "object") as Prisma.InputJsonValue;
       } else if (typeof schema === "object") {
         // If it's a single object, wrap it in an array
-        postData.schema = [schema];
+        postData.schemaJson = [schema] as Prisma.InputJsonValue;
       } else {
-        postData.schema = null;
+        postData.schemaJson = Prisma.DbNull;
       }
     } else {
-      postData.schema = null;
+      postData.schemaJson = Prisma.DbNull;
     }
 
     // Handle publishedAt
@@ -212,10 +207,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the post
-    const post = await Post.create(postData);
-
-    // Type assertion to fix TypeScript inference issue
-    const createdPost = Array.isArray(post) ? post[0] : post;
+    const createdPost = await prisma.post.create({ data: postData });
 
     // Return success response
     return NextResponse.json(
@@ -223,7 +215,7 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "Post created successfully!",
         post: {
-          id: createdPost._id.toString(),
+          id: createdPost.id,
           title: createdPost.title,
           slug: createdPost.slug,
           status: createdPost.status,
@@ -236,26 +228,13 @@ export async function POST(req: NextRequest) {
     console.error("Error creating post:", error);
 
     // Handle duplicate key error (slug)
-    if (error.code === 11000) {
+    if (error.code === "P2002") {
       return NextResponse.json(
         {
           success: false,
           message: "A post with this slug already exists.",
         },
         { status: 409 }
-      );
-    }
-
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err: any) => err.message);
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation error",
-          errors: errors,
-        },
-        { status: 400 }
       );
     }
 
@@ -273,8 +252,6 @@ export async function POST(req: NextRequest) {
 // GET endpoint to fetch posts (list with pagination) OR single post by ID
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
-
     // Validate user authentication
     const userResult = await requireRole(req, CONTENT_ROLES);
     if (userResult instanceof NextResponse) {
@@ -291,11 +268,11 @@ export async function GET(req: NextRequest) {
     // Get query parameters
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    
+
     // If ID is provided, fetch single post
     if (id) {
-      // Validate ObjectId format
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      // Validate ID format
+      if (typeof id !== "string" || id.trim().length === 0) {
         return NextResponse.json(
           {
             success: false,
@@ -305,43 +282,42 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      try {
-        // Fetch the single post
-        const post = await Post.findById(id)
-          .populate("author", "username email")
-          .populate("category", "name slug")
-          .lean();
+      // Fetch the single post
+      const post = await prisma.post.findUnique({
+        where: { id },
+        include: {
+          author: { select: { id: true, username: true, email: true } },
+          categories: { select: { id: true, name: true, slug: true } },
+        },
+      });
 
-        if (!post) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: "Post not found.",
-            },
-            { status: 404 }
-          );
-        }
-
+      if (!post) {
         return NextResponse.json(
           {
-            success: true,
-            post: post,
+            success: false,
+            message: "Post not found.",
           },
-          { status: 200 }
+          { status: 404 }
         );
-      } catch (findError: any) {
-        // Handle findById specific errors
-        if (findError.name === "CastError") {
-          return NextResponse.json(
-            {
-              success: false,
-              message: "Invalid post ID format.",
-            },
-            { status: 400 }
-          );
-        }
-        throw findError; // Re-throw if it's not a CastError
       }
+
+      // Map Prisma field names back to the API contract
+      const { categories, faqItems, schemaJson, authorId: _authorId, ...rest } = post;
+      const responsePost = withMongoId({
+        ...rest,
+        category: categories,
+        faq_items: faqItems ?? [],
+        additionalFields: rest.additionalFields ?? {},
+        schema: schemaJson ?? null,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          post: responsePost,
+        },
+        { status: 200 }
+      );
     }
 
     // Otherwise, fetch list of posts (existing logic)
@@ -351,27 +327,53 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Build query
-    const query: any = {};
+    const query: Prisma.PostWhereInput = {};
     if (status) {
+      // An unknown status matched no documents in Mongo — keep that behavior
+      // (Prisma would otherwise reject the invalid enum value).
+      if (status !== "draft" && status !== "published") {
+        return NextResponse.json(
+          {
+            success: true,
+            posts: [],
+            pagination: {
+              total: 0,
+              page,
+              limit,
+              totalPages: 0,
+            },
+          },
+          { status: 200 }
+        );
+      }
       query.status = status;
     }
 
     // Fetch posts with only required fields
-    const posts = await Post.find(query)
-      .populate("author", "username email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .select("title slug author status publishedAt createdAt updatedAt")
-      .lean();
+    const posts = await prisma.post.findMany({
+      where: query,
+      orderBy: { createdAt: "desc" },
+      skip: skip,
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        publishedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        author: { select: { id: true, username: true, email: true } },
+      },
+    });
 
     // Transform posts to include all date fields
-    const transformedPosts = posts.map((post: any) => {
+    const transformedPosts = posts.map((post) => {
       const postData: any = {
-        _id: post._id,
+        _id: post.id,
         title: post.title,
         slug: post.slug,
-        author: post.author,
+        author: withMongoId(post.author),
         status: post.status,
       };
 
@@ -390,7 +392,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Get total count for pagination
-    const total = await Post.countDocuments(query);
+    const total = await prisma.post.count({ where: query });
 
     return NextResponse.json(
       {
@@ -408,17 +410,6 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     console.error("Error fetching posts:", error);
 
-    // Handle invalid ObjectId format
-    if (error.name === "CastError") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid post ID format.",
-        },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json(
       {
         success: false,
@@ -431,9 +422,6 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    // connect to db
-    await connectDB();
-
     // get current user
     const userResult = await requireRole(req, EDITOR_ROLES);
     if (userResult instanceof NextResponse) {
@@ -462,7 +450,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Check if post exists
-    const post = await Post.findById(id);
+    const post = await prisma.post.findUnique({ where: { id } });
     if (!post) {
       return NextResponse.json(
         {
@@ -474,7 +462,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Delete the post
-    await Post.findByIdAndDelete(id);
+    await prisma.post.delete({ where: { id } });
 
     return NextResponse.json(
       {
@@ -488,17 +476,6 @@ export async function DELETE(req: NextRequest) {
   } catch (error: any) {
     console.error("Error deleting post:", error);
 
-    // Handle invalid ObjectId format
-    if (error.name === "CastError") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid post ID format.",
-        },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json(
       {
         success: false,
@@ -510,13 +487,9 @@ export async function DELETE(req: NextRequest) {
 
   }
 }
-// ... existing code (POST, GET, DELETE) ...
 
 export async function PUT(req: NextRequest) {
   try {
-    // Connect to database
-    await connectDB();
-
     // Get current user (author)
     const userResult = await requireRole(req, EDITOR_ROLES);
     if (userResult instanceof NextResponse) {
@@ -563,7 +536,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Find the existing post
-    const post = await Post.findById(id);
+    const post = await prisma.post.findUnique({ where: { id } });
     if (!post) {
       return NextResponse.json(
         {
@@ -607,9 +580,11 @@ export async function PUT(req: NextRequest) {
 
     // Check if slug already exists (only if slug is being changed)
     if (slug && slug.toLowerCase().trim() !== post.slug) {
-      const existingPost = await Post.findOne({ 
-        slug: slug.toLowerCase().trim(),
-        _id: { $ne: id } // Exclude current post
+      const existingPost = await prisma.post.findFirst({
+        where: {
+          slug: slug.toLowerCase().trim(),
+          id: { not: id }, // Exclude current post
+        },
       });
       if (existingPost) {
         return NextResponse.json(
@@ -622,25 +597,27 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // Update fields if provided
+    // Build update data with fields if provided
+    const updateData: Prisma.PostUpdateInput = {};
+
     if (title !== undefined) {
-      post.title = title.trim();
+      updateData.title = title.trim();
     }
 
     if (slug !== undefined) {
-      post.slug = slug.toLowerCase().trim();
+      updateData.slug = slug.toLowerCase().trim();
     }
 
     if (content !== undefined) {
-      post.content = content.trim();
+      updateData.content = content.trim();
     }
 
     if (excerpt !== undefined) {
-      post.excerpt = excerpt ? excerpt.trim() : "";
+      updateData.excerpt = excerpt ? excerpt.trim() : "";
     }
 
     if (featuredImage !== undefined) {
-      post.featuredImage = featuredImage ? featuredImage.trim() : "";
+      updateData.featuredImage = featuredImage ? featuredImage.trim() : "";
     }
 
     // Handle category update
@@ -649,23 +626,14 @@ export async function PUT(req: NextRequest) {
       const validCategoryIds = categoryArray.filter(Boolean);
 
       if (validCategoryIds.length > 0) {
-        const validObjectIds = validCategoryIds
-          .map((id: string) => {
-            try {
-              return new mongoose.Types.ObjectId(id);
-            } catch {
-              return null;
-            }
-          })
-          .filter((id): id is mongoose.Types.ObjectId => id !== null);
-
         // Verify all categories exist in database
-        const existingCategories = await Category.find({
-          _id: { $in: validObjectIds }
-        }).select('_id');
+        const existingCategories = await prisma.category.findMany({
+          where: { id: { in: validCategoryIds } },
+          select: { id: true },
+        });
 
-        const existingIds = existingCategories.map(cat => cat._id.toString());
-        const invalidIds = validCategoryIds.filter((id: string) => !existingIds.includes(id));
+        const existingIds = existingCategories.map((cat) => cat.id);
+        const invalidIds = validCategoryIds.filter((catId: string) => !existingIds.includes(catId));
 
         if (invalidIds.length > 0) {
           return NextResponse.json(
@@ -677,11 +645,11 @@ export async function PUT(req: NextRequest) {
           );
         }
 
-        post.category = validObjectIds;
+        updateData.categories = { set: validCategoryIds.map((catId: string) => ({ id: catId })) };
       } else {
         // Empty array provided, assign to "Others"
         const othersCategoryId = await ensureDefaultCategory();
-        post.category = [othersCategoryId];
+        updateData.categories = { set: [{ id: othersCategoryId }] };
       }
     }
     // If category is undefined, don't change existing category (preserve existing behavior)
@@ -712,10 +680,10 @@ export async function PUT(req: NextRequest) {
         }
       }
 
-      post.faq_items = faq_items.map((faq: any) => ({
+      updateData.faqItems = faq_items.map((faq: any) => ({
         question: faq.question.trim(),
         answer: faq.answer.trim(),
-      }));
+      })) as Prisma.InputJsonValue;
     }
 
     // Handle additionalFields update - MERGE with existing fields
@@ -732,8 +700,9 @@ export async function PUT(req: NextRequest) {
 
       // Deep merge additionalFields with existing ones
       // This allows updating specific fields in additionalFields without losing others
-      const existingFields = post.additionalFields || {};
-      post.additionalFields = {
+      const existingFields: Record<string, any> =
+        (post.additionalFields as Record<string, any>) || {};
+      const mergedFields: Record<string, any> = {
         ...existingFields,
         ...additionalFields,
       };
@@ -750,51 +719,67 @@ export async function PUT(req: NextRequest) {
           !Array.isArray(existingFields[key])
         ) {
           // Deep merge nested objects
-          post.additionalFields[key] = {
+          mergedFields[key] = {
             ...existingFields[key],
             ...additionalFields[key],
           };
         }
       }
+
+      updateData.additionalFields = mergedFields as Prisma.InputJsonValue;
     }
 
     // Handle schema update (Array of schema objects)
     if (schema !== undefined) {
       if (schema === null) {
-        (post as any).schema = null;
+        updateData.schemaJson = Prisma.DbNull;
       } else if (Array.isArray(schema)) {
         // Filter out any null/undefined values and ensure all items are objects
-        (post as any).schema = schema.filter((s: any) => s !== null && s !== undefined && typeof s === "object");
+        updateData.schemaJson = schema.filter((s: any) => s !== null && s !== undefined && typeof s === "object") as Prisma.InputJsonValue;
       } else if (typeof schema === "object") {
         // If it's a single object, wrap it in an array
-        (post as any).schema = [schema];
+        updateData.schemaJson = [schema] as Prisma.InputJsonValue;
       } else {
-        (post as any).schema = null;
+        updateData.schemaJson = Prisma.DbNull;
       }
     }
 
     // Handle status and publishedAt
     if (status !== undefined) {
-      post.status = status;
-      
+      // Validate status enum (Mongoose used to reject this as a ValidationError)
+      if (!["draft", "published"].includes(status)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Validation error",
+            errors: [`\`${status}\` is not a valid enum value for path \`status\`.`],
+          },
+          { status: 400 }
+        );
+      }
+      updateData.status = status;
+
       if (status === "published") {
         if (publishedAt) {
-          post.publishedAt = new Date(publishedAt);
+          updateData.publishedAt = new Date(publishedAt);
         } else if (!post.publishedAt) {
           // Only set if not already published
-          post.publishedAt = new Date();
+          updateData.publishedAt = new Date();
         }
       } else {
         // If status is draft, set publishedAt to null
-        post.publishedAt = null;
+        updateData.publishedAt = null;
       }
     } else if (publishedAt !== undefined && post.status === "published") {
       // If only publishedAt is provided and status is already published
-      post.publishedAt = new Date(publishedAt);
+      updateData.publishedAt = new Date(publishedAt);
     }
 
     // Save the updated post
-    const updatedPost = await post.save();
+    const updatedPost = await prisma.post.update({
+      where: { id },
+      data: updateData,
+    });
 
     // Return success response
     return NextResponse.json(
@@ -802,7 +787,7 @@ export async function PUT(req: NextRequest) {
         success: true,
         message: "Post updated successfully!",
         post: {
-          id: updatedPost._id.toString(),
+          id: updatedPost.id,
           title: updatedPost.title,
           slug: updatedPost.slug,
           status: updatedPost.status,
@@ -816,37 +801,13 @@ export async function PUT(req: NextRequest) {
     console.error("Error updating post:", error);
 
     // Handle duplicate key error (slug)
-    if (error.code === 11000) {
+    if (error.code === "P2002") {
       return NextResponse.json(
         {
           success: false,
           message: "A post with this slug already exists.",
         },
         { status: 409 }
-      );
-    }
-
-    // Handle invalid ObjectId format
-    if (error.name === "CastError") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid post ID format.",
-        },
-        { status: 400 }
-      );
-    }
-
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err: any) => err.message);
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation error",
-          errors: errors,
-        },
-        { status: 400 }
       );
     }
 

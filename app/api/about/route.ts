@@ -1,7 +1,7 @@
-import { connectDB } from "@/app/lib/config/db";
-import AboutPageModel from "@/app/lib/models/about";
-import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
@@ -9,7 +9,7 @@ import { CONTENT_ROLES } from "@/app/lib/constants/role";
 // small merging requred
 // CORS headers helper
 const getCorsHeaders = (origin: string | null) => {
-  const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://magdee-coral.vercel.app';
+  const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
 
   // Normalize URLs (remove trailing slashes for comparison)
   const normalizeUrl = (url: string) => url.replace(/\/$/, '');
@@ -42,6 +42,10 @@ const getCorsHeaders = (origin: string | null) => {
   };
 };
 
+// Nullable Json columns need Prisma.JsonNull instead of plain null
+const jsonValue = (v: unknown) =>
+  v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue);
+
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS(req: NextRequest) {
   return NextResponse.json({}, { headers: getCorsHeaders(req.headers.get('origin')) });
@@ -66,8 +70,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connectDB();
-    const existing = await AboutPageModel.findOne();
+    const existing = await prisma.aboutPage.findFirst();
     if (existing) {
       return NextResponse.json(
         {
@@ -78,13 +81,23 @@ export async function POST(req: NextRequest) {
       );
     }
     const body = await req.json();
-    const aboutPage = await AboutPageModel.create(body);
+    const aboutPage = await prisma.aboutPage.create({
+      data: {
+        metaTitle: body.metaTitle ?? undefined,
+        metaDescription: body.metaDescription ?? undefined,
+        heroSection: (body.heroSection ?? undefined) as Prisma.InputJsonValue | undefined,
+        aboutSection: (body.aboutSection ?? undefined) as Prisma.InputJsonValue | undefined,
+        approachSection: (body.approachSection ?? undefined) as Prisma.InputJsonValue | undefined,
+        teamSection: (body.teamSection ?? undefined) as Prisma.InputJsonValue | undefined,
+        foundersNoteSection: (body.foundersNoteSection ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    });
 
     return NextResponse.json(
       {
         success: true,
         message: "About page created successfully",
-        data: aboutPage,
+        data: withMongoId(aboutPage),
       },
       { status: 201 }
     );
@@ -103,11 +116,9 @@ export async function POST(req: NextRequest) {
 
 
 export async function GET(req: NextRequest) {
+  const origin = req.headers.get('origin');
   try {
-    const origin = req.headers.get('origin');
-    await connectDB();
-
-    const aboutPage = await AboutPageModel.findOne();
+    const aboutPage = await prisma.aboutPage.findFirst();
 
     if (!aboutPage) {
       return NextResponse.json(
@@ -122,7 +133,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: aboutPage,
+        data: withMongoId(aboutPage),
       },
       { status: 200, headers: getCorsHeaders(origin) }
     );
@@ -158,11 +169,8 @@ export async function PATCH(req: NextRequest) {
         { status: 401 }
       );
     }
-    await connectDB();
 
-  
-
-    const existingAboutPage = await AboutPageModel.findOne();
+    const existingAboutPage = await prisma.aboutPage.findFirst();
 
     if (!existingAboutPage) {
       return NextResponse.json(
@@ -176,20 +184,25 @@ export async function PATCH(req: NextRequest) {
 
     const updateData = await req.json();
 
-    const updatedAboutPage = await AboutPageModel.findOneAndUpdate(
-      {},
-      { $set: updateData },
-      {
-        new: true,
-        runValidators: true
-      }
-    );
+    const data: Prisma.AboutPageUpdateInput = {};
+    if (updateData.metaTitle !== undefined) data.metaTitle = updateData.metaTitle;
+    if (updateData.metaDescription !== undefined) data.metaDescription = updateData.metaDescription;
+    if (updateData.heroSection !== undefined) data.heroSection = jsonValue(updateData.heroSection);
+    if (updateData.aboutSection !== undefined) data.aboutSection = jsonValue(updateData.aboutSection);
+    if (updateData.approachSection !== undefined) data.approachSection = jsonValue(updateData.approachSection);
+    if (updateData.teamSection !== undefined) data.teamSection = jsonValue(updateData.teamSection);
+    if (updateData.foundersNoteSection !== undefined) data.foundersNoteSection = jsonValue(updateData.foundersNoteSection);
+
+    const updatedAboutPage = await prisma.aboutPage.update({
+      where: { id: existingAboutPage.id },
+      data,
+    });
 
     return NextResponse.json(
       {
         success: true,
         message: "About page updated successfully",
-        data: updatedAboutPage,
+        data: withMongoId(updatedAboutPage),
       },
       { status: 200 }
     );
@@ -205,4 +218,3 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
-

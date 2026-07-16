@@ -1123,7 +1123,7 @@ export default function AboutPage() {
                       <input
                         value={formData.foundersNoteSection.founderEmail}
                         onChange={(e) => updateFoundersNote("founderEmail", e.target.value)}
-                        placeholder="vivek@magdee.in"
+                        placeholder="vivek@global-elite-cms.in"
                         className="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
@@ -1161,7 +1161,7 @@ export default function AboutPage() {
                       <input
                         value={formData.foundersNoteSection.documentNote}
                         onChange={(e) => updateFoundersNote("documentNote", e.target.value)}
-                        placeholder="Founders' Note · MagDee Technologies · 2025"
+                        placeholder="Founders' Note · Global Elite Technologies · 2025"
                         className="w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
