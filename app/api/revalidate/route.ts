@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeSecret } from "@/app/lib/utils/revalidateFrontend";
 
 const FRONTEND_URL = process.env.PRODUCTION_URL || "http://localhost:3001";
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-revalidate-secret": process.env.REVALIDATE_SECRET || "",
+        "x-revalidate-secret": normalizeSecret(process.env.REVALIDATE_SECRET),
       },
       body: JSON.stringify({ tags }),
       signal: AbortSignal.timeout(10000),
