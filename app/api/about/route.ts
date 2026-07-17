@@ -5,8 +5,8 @@ import { Prisma } from "@prisma/client";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags } from "@/app/lib/utils/revalidateFrontend";
 
-// small merging requred
 // CORS headers helper
 const getCorsHeaders = (origin: string | null) => {
   const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
@@ -16,7 +16,6 @@ const getCorsHeaders = (origin: string | null) => {
   const normalizedProductionUrl = normalizeUrl(PRODUCTION_URL);
   const normalizedOrigin = origin ? normalizeUrl(origin) : null;
 
-  // Check if origin matches production URL (with or without trailing slash)
   if (normalizedOrigin === normalizedProductionUrl) {
     return {
       'Access-Control-Allow-Origin': origin || PRODUCTION_URL,
@@ -25,7 +24,6 @@ const getCorsHeaders = (origin: string | null) => {
     };
   }
 
-  // Check if origin is localhost with any port
   if (origin && origin.startsWith('http://localhost:')) {
     return {
       'Access-Control-Allow-Origin': origin,
@@ -34,7 +32,6 @@ const getCorsHeaders = (origin: string | null) => {
     };
   }
 
-  // Default: always allow production URL (for cases where origin might be null or different)
   return {
     'Access-Control-Allow-Origin': PRODUCTION_URL,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
@@ -42,179 +39,131 @@ const getCorsHeaders = (origin: string | null) => {
   };
 };
 
-// Nullable Json columns need Prisma.JsonNull instead of plain null
-const jsonValue = (v: unknown) =>
-  v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue);
-
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS(req: NextRequest) {
   return NextResponse.json({}, { headers: getCorsHeaders(req.headers.get('origin')) });
 }
 
+// GET — public: the frontend About page fetches this (singleton)
+export async function GET(req: NextRequest) {
+  try {
+    const aboutPage = await prisma.aboutPage.findFirst();
+    return NextResponse.json(
+      {
+        success: true,
+        aboutPage: aboutPage ? withMongoId(aboutPage) : null,
+      },
+      { status: 200, headers: getCorsHeaders(req.headers.get('origin')) }
+    );
+  } catch (error) {
+    console.error("Error fetching about page:", error);
+    return NextResponse.json(
+      { success: false, message: "Internal Server Error - Fetching about page" },
+      { status: 500, headers: getCorsHeaders(req.headers.get('origin')) }
+    );
+  }
+}
+
+// POST — create or update the singleton about page (admin dashboard)
 export async function POST(req: NextRequest) {
   try {
-    // Authenticate user - only admin/editor can access
     const userResult = await requireRole(req, CONTENT_ROLES);
     if (userResult instanceof NextResponse) {
-      return userResult; // Return error response if authentication fails
+      return userResult;
     }
 
-    const userId = userResult.id;
-    if (!userId) {
+    const body = await req.json();
+    const { metaTitle, metaDescription, content } = body;
+
+    if (!content || typeof content !== "object") {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Unauthorized. Please login to perform changes",
-        },
-        { status: 401 }
+        { success: false, message: "content must be a JSON object" },
+        { status: 400, headers: getCorsHeaders(req.headers.get('origin')) }
+      );
+    }
+
+    const data = {
+      metaTitle: metaTitle ?? undefined,
+      metaDescription: metaDescription ?? undefined,
+      content: content as Prisma.InputJsonValue,
+    };
+
+    const existing = await prisma.aboutPage.findFirst();
+    const aboutPage = existing
+      ? await prisma.aboutPage.update({ where: { id: existing.id }, data })
+      : await prisma.aboutPage.create({ data });
+
+    await revalidateFrontendTags(["about-page"]);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "About page saved successfully",
+        aboutPage: withMongoId(aboutPage),
+      },
+      { status: 200, headers: getCorsHeaders(req.headers.get('origin')) }
+    );
+  } catch (error) {
+    console.error("Error saving about page:", error);
+    return NextResponse.json(
+      { success: false, message: "Internal Server Error - Saving about page" },
+      { status: 500, headers: getCorsHeaders(req.headers.get('origin')) }
+    );
+  }
+}
+
+// PATCH — partial update (kept for API compatibility; same behaviour as POST
+// but only touches the provided fields)
+export async function PATCH(req: NextRequest) {
+  try {
+    const userResult = await requireRole(req, CONTENT_ROLES);
+    if (userResult instanceof NextResponse) {
+      return userResult;
+    }
+
+    const body = await req.json();
+    const { metaTitle, metaDescription, content } = body;
+
+    if (content !== undefined && (content === null || typeof content !== "object")) {
+      return NextResponse.json(
+        { success: false, message: "content must be a JSON object" },
+        { status: 400, headers: getCorsHeaders(req.headers.get('origin')) }
       );
     }
 
     const existing = await prisma.aboutPage.findFirst();
-    if (existing) {
+    if (!existing) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "About page already exists. Use PATCH to edit.",
-        },
-        { status: 409 }
+        { success: false, message: "About page not found — create it first" },
+        { status: 404, headers: getCorsHeaders(req.headers.get('origin')) }
       );
     }
-    const body = await req.json();
-    const aboutPage = await prisma.aboutPage.create({
-      data: {
-        metaTitle: body.metaTitle ?? undefined,
-        metaDescription: body.metaDescription ?? undefined,
-        heroSection: (body.heroSection ?? undefined) as Prisma.InputJsonValue | undefined,
-        aboutSection: (body.aboutSection ?? undefined) as Prisma.InputJsonValue | undefined,
-        approachSection: (body.approachSection ?? undefined) as Prisma.InputJsonValue | undefined,
-        teamSection: (body.teamSection ?? undefined) as Prisma.InputJsonValue | undefined,
-        foundersNoteSection: (body.foundersNoteSection ?? undefined) as Prisma.InputJsonValue | undefined,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: "About page created successfully",
-        data: withMongoId(aboutPage),
-      },
-      { status: 201 }
-    );
-  } catch (error: any) {
-    console.error("Error creating About page:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Internal Server Error-Failed To Create the About us page",
-        error: error.message || error,
-      },
-      { status: 500 }
-    );
-  }
-}
-
-
-export async function GET(req: NextRequest) {
-  const origin = req.headers.get('origin');
-  try {
-    const aboutPage = await prisma.aboutPage.findFirst();
-
-    if (!aboutPage) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "About page not found",
-        },
-        { status: 404, headers: getCorsHeaders(origin) }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: withMongoId(aboutPage),
-      },
-      { status: 200, headers: getCorsHeaders(origin) }
-    );
-  } catch (error: any) {
-    console.error("Error fetching About page:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch About page",
-        error: error.message || String(error),
-      },
-      { status: 500, headers: getCorsHeaders(origin) }
-    );
-  }
-}
-
-export async function PATCH(req: NextRequest) {
-  try {
-
-    // Authenticate user - only admin/editor can access
-    const userResult = await requireRole(req, CONTENT_ROLES);
-    if (userResult instanceof NextResponse) {
-      return userResult; // Return error response if authentication fails
-    }
-
-    const userId = userResult.id;
-    if (!userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Unauthorized. Please login to perform changes",
-        },
-        { status: 401 }
-      );
-    }
-
-    const existingAboutPage = await prisma.aboutPage.findFirst();
-
-    if (!existingAboutPage) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "About page not found. Create one first using POST.",
-        },
-        { status: 404 }
-      );
-    }
-
-    const updateData = await req.json();
 
     const data: Prisma.AboutPageUpdateInput = {};
-    if (updateData.metaTitle !== undefined) data.metaTitle = updateData.metaTitle;
-    if (updateData.metaDescription !== undefined) data.metaDescription = updateData.metaDescription;
-    if (updateData.heroSection !== undefined) data.heroSection = jsonValue(updateData.heroSection);
-    if (updateData.aboutSection !== undefined) data.aboutSection = jsonValue(updateData.aboutSection);
-    if (updateData.approachSection !== undefined) data.approachSection = jsonValue(updateData.approachSection);
-    if (updateData.teamSection !== undefined) data.teamSection = jsonValue(updateData.teamSection);
-    if (updateData.foundersNoteSection !== undefined) data.foundersNoteSection = jsonValue(updateData.foundersNoteSection);
+    if (metaTitle !== undefined) data.metaTitle = metaTitle;
+    if (metaDescription !== undefined) data.metaDescription = metaDescription;
+    if (content !== undefined) data.content = content as Prisma.InputJsonValue;
 
-    const updatedAboutPage = await prisma.aboutPage.update({
-      where: { id: existingAboutPage.id },
+    const aboutPage = await prisma.aboutPage.update({
+      where: { id: existing.id },
       data,
     });
+
+    await revalidateFrontendTags(["about-page"]);
 
     return NextResponse.json(
       {
         success: true,
         message: "About page updated successfully",
-        data: withMongoId(updatedAboutPage),
+        aboutPage: withMongoId(aboutPage),
       },
-      { status: 200 }
+      { status: 200, headers: getCorsHeaders(req.headers.get('origin')) }
     );
-  } catch (error: any) {
-    console.error("Error updating About page:", error);
+  } catch (error) {
+    console.error("Error updating about page:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Internal Server Error - Failed to update About page",
-        error: error.message || error,
-      },
-      { status: 500 }
+      { success: false, message: "Internal Server Error - Updating about page" },
+      { status: 500, headers: getCorsHeaders(req.headers.get('origin')) }
     );
   }
 }
