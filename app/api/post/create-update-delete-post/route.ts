@@ -6,6 +6,10 @@ import { ensureDefaultCategory } from "@/app/lib/utils/DefaultCategory";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES, EDITOR_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags } from "@/app/lib/utils/revalidateFrontend";
+
+// Frontend cache tags for a blog post (mirrors app/lib/cms.ts on the frontend)
+const postTags = (slug: string) => ["post-list", `post-${slug}`];
 
 
 export async function POST(req: NextRequest) {
@@ -208,6 +212,8 @@ export async function POST(req: NextRequest) {
 
     // Create the post
     const createdPost = await prisma.post.create({ data: postData });
+
+    await revalidateFrontendTags(postTags(createdPost.slug));
 
     // Return success response
     return NextResponse.json(
@@ -463,6 +469,8 @@ export async function DELETE(req: NextRequest) {
 
     // Delete the post
     await prisma.post.delete({ where: { id } });
+
+    await revalidateFrontendTags(postTags(post.slug));
 
     return NextResponse.json(
       {
@@ -780,6 +788,10 @@ export async function PUT(req: NextRequest) {
       where: { id },
       data: updateData,
     });
+
+    // Clear both the old and (possibly renamed) new slug on the frontend
+    const tags = new Set([...postTags(post.slug), ...postTags(updatedPost.slug)]);
+    await revalidateFrontendTags([...tags]);
 
     // Return success response
     return NextResponse.json(
