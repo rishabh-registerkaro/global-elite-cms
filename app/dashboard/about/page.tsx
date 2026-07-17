@@ -619,6 +619,20 @@ export default function AboutDashboardPage() {
               <Field label="Photo URL">
                 <Input className={inputCls} value={m.photo} placeholder="/assets/about-team-1.jpg or a Media Library URL" onChange={(e) => set("team", { ...team, members: team.members.map((x, idx) => (idx === i ? { ...x, photo: e.target.value } : x)) })} />
               </Field>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field label="Email (optional)">
+                  <Input className={inputCls} value={m.email ?? ""} placeholder="meera@globalelite.in" onChange={(e) => set("team", { ...team, members: team.members.map((x, idx) => (idx === i ? { ...x, email: e.target.value } : x)) })} />
+                </Field>
+                <Field label="LinkedIn URL (optional)">
+                  <Input className={inputCls} value={m.linkedin ?? ""} placeholder="https://linkedin.com/in/…" onChange={(e) => set("team", { ...team, members: team.members.map((x, idx) => (idx === i ? { ...x, linkedin: e.target.value } : x)) })} />
+                </Field>
+                <Field label="Instagram URL (optional)">
+                  <Input className={inputCls} value={m.instagram ?? ""} placeholder="https://instagram.com/…" onChange={(e) => set("team", { ...team, members: team.members.map((x, idx) => (idx === i ? { ...x, instagram: e.target.value } : x)) })} />
+                </Field>
+              </div>
+              <p className="text-xs text-slate-500">
+                The icons on the website only appear for links you fill in — leave a field empty to hide its icon.
+              </p>
             </div>
           ))}
           <AddButton onClick={() => set("team", { ...team, members: [...team.members, { name: "", role: "", desc: "", photo: "" }] })} label="Add member" />

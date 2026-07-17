@@ -68,7 +68,16 @@ export type AboutPageContent = {
     headingLead: string;
     headingAccent: string;
     intro: string;
-    members: { name: string; role: string; desc: string; photo: string }[];
+    members: {
+      name: string;
+      role: string;
+      desc: string;
+      photo: string;
+      // social links — the frontend only shows an icon when a value is set
+      email?: string;
+      linkedin?: string;
+      instagram?: string;
+    }[];
   };
   founder: {
     kicker: string;
