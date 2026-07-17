@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags } from "@/app/lib/utils/revalidateFrontend";
 
 const getCorsHeaders = (origin: string | null) => {
   const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
@@ -140,6 +141,8 @@ export async function POST(req: NextRequest) {
         data: updateData,
       });
 
+      await revalidateFrontendTags(["footer-menu"]);
+
       return NextResponse.json(
         {
           success: true,
@@ -156,6 +159,8 @@ export async function POST(req: NextRequest) {
           contactDetails: (contact_details !== undefined ? contact_details : []) as Prisma.InputJsonValue,
         },
       });
+
+      await revalidateFrontendTags(["footer-menu"]);
 
       return NextResponse.json(
         {
@@ -225,6 +230,8 @@ export async function PUT(req: NextRequest) {
         },
       });
 
+      await revalidateFrontendTags(["footer-menu"]);
+
       return NextResponse.json(
         {
           success: true,
@@ -244,6 +251,8 @@ export async function PUT(req: NextRequest) {
       where: { id: footerMenu.id },
       data: updateData,
     });
+
+    await revalidateFrontendTags(["footer-menu"]);
 
     return NextResponse.json(
       {
