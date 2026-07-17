@@ -134,7 +134,7 @@ export default function BlogPage() {
       const res = await fetch("/api/revalidate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: ["blog-list", `blog-${slug}`] }),
+        body: JSON.stringify({ tags: ["post-list", `post-${slug}`] }),
         credentials: "include",
       });
       const data = await res.json();

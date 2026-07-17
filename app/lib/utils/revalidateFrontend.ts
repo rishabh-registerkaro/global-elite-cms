@@ -2,6 +2,12 @@
 // Called automatically after service page mutations so creates, edits and
 // deletes show on the live site immediately — no manual "revalidate" needed.
 
+// Hosting dashboards often end up with surrounding quotes or stray whitespace
+// pasted into env values (dotenv strips quotes, dashboard UIs don't). Normalize
+// so both sides compare the same secret regardless.
+export const normalizeSecret = (v: string | null | undefined) =>
+  (v ?? "").trim().replace(/^['"]|['"]$/g, "");
+
 export async function revalidateFrontendTags(tags: string[]): Promise<void> {
   const FRONTEND_URL = process.env.PRODUCTION_URL || "http://localhost:3001";
   try {
@@ -9,7 +15,7 @@ export async function revalidateFrontendTags(tags: string[]): Promise<void> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-revalidate-secret": process.env.REVALIDATE_SECRET || "",
+        "x-revalidate-secret": normalizeSecret(process.env.REVALIDATE_SECRET),
       },
       body: JSON.stringify({ tags }),
       signal: AbortSignal.timeout(10000),
