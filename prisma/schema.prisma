@@ -250,6 +250,8 @@ model TermsPolicy {
 model HeaderMenu {
   id        String   @id @default(cuid())
   mainMenu  Json     @map("main_menu")
+  // Utility-bar content: {whatsappLabel, whatsappNumber, careLabel, careNumber, ctaText, ctaUrl}
+  contactDetails Json? @map("contact_details")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

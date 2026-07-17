@@ -29,10 +29,33 @@ interface MainMenuItem {
   child_menu: ChildMenuItem[] | false;
 }
 
+// Top utility bar of the frontend header: two contact blocks + the CTA button
+interface HeaderContactDetails {
+  whatsappLabel: string;
+  whatsappNumber: string;
+  careLabel: string;
+  careNumber: string;
+  ctaText: string;
+  ctaUrl: string;
+}
+
+const defaultContactDetails: HeaderContactDetails = {
+  whatsappLabel: "WhatsApp Number",
+  whatsappNumber: "",
+  careLabel: "Customer Care",
+  careNumber: "",
+  ctaText: "Get A Quote",
+  ctaUrl: "/contact",
+};
+
 export default function HeaderMenuPage() {
   const [mainMenu, setMainMenu] = useState<MainMenuItem[]>([]);
+  const [contactDetails, setContactDetails] = useState<HeaderContactDetails>(defaultContactDetails);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const updateContact = (field: keyof HeaderContactDetails, value: string) =>
+    setContactDetails((p) => ({ ...p, [field]: value }));
 
   // Fetch header menu
   useEffect(() => {
@@ -47,6 +70,7 @@ export default function HeaderMenuPage() {
       
       if (data.success && data.headerMenu) {
         setMainMenu(data.headerMenu.main_menu || []);
+        setContactDetails({ ...defaultContactDetails, ...(data.headerMenu.contact_details || {}) });
       }
     } catch (error) {
       console.error("Error fetching header menu:", error);
@@ -275,7 +299,7 @@ export default function HeaderMenuPage() {
       const res = await fetch("/api/header-menu", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ main_menu: mainMenu }),
+        body: JSON.stringify({ main_menu: mainMenu, contact_details: contactDetails }),
       });
 
       const data = await res.json();
@@ -333,6 +357,72 @@ export default function HeaderMenuPage() {
             >
               {saving ? "Saving..." : "Save Menu"}
             </Button>
+          </div>
+        </div>
+
+        {/* Utility Bar Section — contact blocks + CTA shown above the nav strip */}
+        <div className="bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl p-5 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Utility Bar (Contacts &amp; CTA)</h2>
+            <p className="text-sm text-slate-400">
+              The white bar above the navigation: WhatsApp / customer care numbers and the quote button.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">WhatsApp Label</label>
+              <Input
+                value={contactDetails.whatsappLabel}
+                onChange={(e) => updateContact("whatsappLabel", e.target.value)}
+                placeholder="WhatsApp Number"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">WhatsApp Number</label>
+              <Input
+                value={contactDetails.whatsappNumber}
+                onChange={(e) => updateContact("whatsappNumber", e.target.value)}
+                placeholder="+91 88664 73857"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Customer Care Label</label>
+              <Input
+                value={contactDetails.careLabel}
+                onChange={(e) => updateContact("careLabel", e.target.value)}
+                placeholder="Customer Care"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Customer Care Number</label>
+              <Input
+                value={contactDetails.careNumber}
+                onChange={(e) => updateContact("careNumber", e.target.value)}
+                placeholder="+91 88667 87599"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">CTA Button Text</label>
+              <Input
+                value={contactDetails.ctaText}
+                onChange={(e) => updateContact("ctaText", e.target.value)}
+                placeholder="Get A Quote"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">CTA Button Link</label>
+              <Input
+                value={contactDetails.ctaUrl}
+                onChange={(e) => updateContact("ctaUrl", e.target.value)}
+                placeholder="/contact"
+                className="bg-slate-900/60 border-slate-600 text-white placeholder-slate-400 h-10"
+              />
+            </div>
           </div>
         </div>
 

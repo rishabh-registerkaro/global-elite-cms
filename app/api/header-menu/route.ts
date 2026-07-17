@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags } from "@/app/lib/utils/revalidateFrontend";
 
 const getCorsHeaders = (origin: string | null) => {
   const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
@@ -43,8 +44,8 @@ const getCorsHeaders = (origin: string | null) => {
 // API contract keeps the Mongo-era snake_case field name `main_menu`
 // (Prisma field is `mainMenu`).
 const serializeHeaderMenu = (menu: HeaderMenu) => {
-  const { mainMenu, ...rest } = menu;
-  return withMongoId({ ...rest, main_menu: mainMenu });
+  const { mainMenu, contactDetails, ...rest } = menu;
+  return withMongoId({ ...rest, main_menu: mainMenu, contact_details: contactDetails });
 };
 
 // Handle OPTIONS request for CORS preflight
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { main_menu } = body;
+    const { main_menu, contact_details } = body;
 
     // Validate main_menu structure
     if (!Array.isArray(main_menu)) {
@@ -108,39 +109,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if header menu already exists
+    const data = {
+      mainMenu: main_menu as Prisma.InputJsonValue,
+      contactDetails: (contact_details ?? undefined) as Prisma.InputJsonValue | undefined,
+    };
+
+    // Check if header menu already exists (singleton)
     let headerMenu = await prisma.headerMenu.findFirst();
 
     if (headerMenu) {
-      // Update existing
       headerMenu = await prisma.headerMenu.update({
         where: { id: headerMenu.id },
-        data: { mainMenu: main_menu as Prisma.InputJsonValue },
+        data,
       });
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: "Header menu updated successfully",
-          headerMenu: serializeHeaderMenu(headerMenu),
-        },
-        { status: 200, headers: getCorsHeaders(req.headers.get('origin')) }
-      );
     } else {
-      // Create new - direct assignment
-      headerMenu = await prisma.headerMenu.create({
-        data: { mainMenu: main_menu as Prisma.InputJsonValue },
-      });
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: "Header menu created successfully",
-          headerMenu: serializeHeaderMenu(headerMenu),
-        },
-        { status: 201, headers: getCorsHeaders(req.headers.get('origin')) }
-      );
+      headerMenu = await prisma.headerMenu.create({ data });
     }
+
+    await revalidateFrontendTags(["header-menu"]);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Header menu saved successfully",
+        headerMenu: serializeHeaderMenu(headerMenu),
+      },
+      { status: 200, headers: getCorsHeaders(req.headers.get('origin')) }
+    );
   } catch (error) {
     console.error("Error saving header menu:", error);
     return NextResponse.json(
@@ -164,7 +159,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { main_menu } = body;
+    const { main_menu, contact_details } = body;
 
     // Validate main_menu structure
     if (!Array.isArray(main_menu)) {
@@ -177,30 +172,24 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Find and update header menu
+    const data = {
+      mainMenu: main_menu as Prisma.InputJsonValue,
+      contactDetails: (contact_details ?? undefined) as Prisma.InputJsonValue | undefined,
+    };
+
+    // Find and update header menu (singleton)
     let headerMenu = await prisma.headerMenu.findFirst();
 
-    if (!headerMenu) {
-      // Create if doesn't exist
-      headerMenu = await prisma.headerMenu.create({
-        data: { mainMenu: main_menu as Prisma.InputJsonValue },
+    if (headerMenu) {
+      headerMenu = await prisma.headerMenu.update({
+        where: { id: headerMenu.id },
+        data,
       });
-
-      return NextResponse.json(
-        {
-          success: true,
-          message: "Header menu created successfully",
-          headerMenu: serializeHeaderMenu(headerMenu),
-        },
-        { status: 201, headers: getCorsHeaders(req.headers.get('origin')) }
-      );
+    } else {
+      headerMenu = await prisma.headerMenu.create({ data });
     }
 
-    // Update existing
-    headerMenu = await prisma.headerMenu.update({
-      where: { id: headerMenu.id },
-      data: { mainMenu: main_menu as Prisma.InputJsonValue },
-    });
+    await revalidateFrontendTags(["header-menu"]);
 
     return NextResponse.json(
       {
