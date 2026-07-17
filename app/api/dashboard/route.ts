@@ -1,15 +1,10 @@
-import { connectDB } from "@/app/lib/config/db";
+import prisma from "@/app/lib/config/db";
+import { withMongoIds } from "@/app/lib/utils/serialize";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
-import Post from "@/app/lib/models/post";
-import Lead from "@/app/lib/models/lead";
-import User from "@/app/lib/models/user";
-import ServicePageModel from "@/app/lib/models/service";
 
 export async function GET(req: NextRequest) {
   try {
-    await connectDB();
-
     const userResult = await getCurrentUser(req);
     if (userResult instanceof NextResponse) return userResult;
 
@@ -33,20 +28,27 @@ export async function GET(req: NextRequest) {
       newLeads,
       recentServices,
     ] = await Promise.all([
-      User.countDocuments({}),
-      ServicePageModel.countDocuments({}),
-      ServicePageModel.countDocuments({ status: "published" }),
-      ServicePageModel.countDocuments({ status: "draft" }),
-      Post.countDocuments({}),
-      Post.countDocuments({ status: "published" }),
-      Post.countDocuments({ status: "draft" }),
-      Lead.countDocuments({}),
-      Lead.countDocuments({ status: "new" }),
-      ServicePageModel.find()
-        .populate("author", "username")
-        .sort({ updatedAt: -1 })
-        .limit(5)
-        .select("slug status heroSection updatedAt author"),
+      prisma.user.count(),
+      prisma.servicePage.count(),
+      prisma.servicePage.count({ where: { status: "published" } }),
+      prisma.servicePage.count({ where: { status: "draft" } }),
+      prisma.post.count(),
+      prisma.post.count({ where: { status: "published" } }),
+      prisma.post.count({ where: { status: "draft" } }),
+      prisma.lead.count(),
+      prisma.lead.count({ where: { status: "new" } }),
+      prisma.servicePage.findMany({
+        select: {
+          id: true,
+          slug: true,
+          status: true,
+          content: true,
+          updatedAt: true,
+          author: { select: { id: true, username: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+      }),
     ]);
 
     return NextResponse.json(
@@ -68,7 +70,7 @@ export async function GET(req: NextRequest) {
             total: totalLeads,
             new: newLeads,
           },
-          recentServices,
+          recentServices: withMongoIds(recentServices),
         },
       },
       { status: 200 }

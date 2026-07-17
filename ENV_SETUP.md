@@ -8,8 +8,9 @@ Complete guide to every environment variable the CMS needs, what it does, and ex
 
 | Variable | Required | Category |
 |---|---|---|
-| `MONGO_URI` | **Yes** | Database |
-| `DB_NAME` | No | Database |
+| `DATABASE_URL` | **Yes** | Database (MySQL) |
+| `MONGO_URI` | Only for one-time data migration | Legacy Database |
+| `DB_NAME` | Only for one-time data migration | Legacy Database |
 | `JWT_SECRET` | **Yes** | Auth |
 | `PRODUCTION_URL` | **Yes** | CORS / Revalidation |
 | `REVALIDATE_SECRET` | **Yes** | Cache |
@@ -36,38 +37,51 @@ Complete guide to every environment variable the CMS needs, what it does, and ex
 
 ---
 
-## 1. Database
+## 1. Database (MySQL via Prisma)
 
-### `MONGO_URI`
+### `DATABASE_URL`
 **Required.**
 
-Your full MongoDB connection string. The app uses this to connect to the database on every request.
+Your full MySQL connection string. The app connects through Prisma using this value.
 
-**How to get it:**
-1. Go to [cloud.mongodb.com](https://cloud.mongodb.com) and log in.
-2. Open your **Project** → click your **Cluster** → click **Connect**.
-3. Choose **Drivers** → select **Node.js**.
-4. Copy the connection string. It looks like:
+```
+DATABASE_URL="mysql://USER:PASSWORD@HOST:3306/DBNAME?connection_limit=5"
+```
+
+**How to get it from Hostinger (hPanel):**
+1. Log in to [hpanel.hostinger.com](https://hpanel.hostinger.com) and select your hosting plan.
+2. Go to **Databases** → **Management**.
+3. Under **Create a New MySQL Database and Database User**, enter a database name (e.g. `global_elite_cms`), a username, and a strong password → **Create**.
+4. Note the values shown in the database list:
+   - **Database name**: e.g. `u698468992_global_elite_cms` (Hostinger prefixes your account id)
+   - **Username**: e.g. `u698468992_global-elite-cms`
+   - **Host**: shown on the same page (e.g. `srv1234.hstgr.io` or `localhost` when the app runs on the same plan)
+5. **For local development / external access:** go to **Databases** → **Remote MySQL**, enter your public IP (or `%` for any host — less secure, fine for testing), select the database, and click **Create**. Use the remote host shown there (e.g. `srv1234.hstgr.io`) in the URL.
+6. Assemble the URL:
    ```
-   mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+   DATABASE_URL="mysql://u698468992_global-elite-cms:YourPassword@srv1234.hstgr.io:3306/u698468992_global_elite_cms?connection_limit=5"
    ```
-5. Replace `<username>` and `<password>` with your Atlas database user credentials (not your Atlas login — the database user created under **Database Access**).
-6. Add your database name before the `?`:
-   ```
-   mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/magdee-cms?retryWrites=true&w=majority
-   ```
+   > If the password contains special characters (`@ # % / :`), URL-encode them (e.g. `@` → `%40`).
+
+Keep `connection_limit=5` — Hostinger shared MySQL caps concurrent connections; a small pool prevents "too many connections" errors.
+
+**After setting it, create the tables:**
+```bash
+npx prisma migrate dev --name init      # local/dev (also generates the client)
+# or on a server/CI:
+npx prisma migrate deploy
+```
 
 **If missing:** Every API call returns 500 — the app is non-functional.
 
 ---
 
-### `DB_NAME`
-**Optional.**
-
-Overrides the database name. If not set, the name embedded in `MONGO_URI` (the part before `?`) is used automatically. You can leave this unset if your URI already has the database name.
+### `MONGO_URI` / `DB_NAME` (legacy — one-time data migration only)
+**Optional.** Only needed while running `npm run migrate:data` (copies your old MongoDB data into MySQL). See `scripts/migrate-mongo-to-mysql.mjs`. After migrating, these can be removed.
 
 ```
-DB_NAME=magdee-cms
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/global-elite-cms-cms
+DB_NAME=global-elite-cms-cms
 ```
 
 ---
@@ -98,7 +112,7 @@ a3f9c2e1b4d87654321fedcba9876543210abcdef1234567890abcdef123456
 ### `PRODUCTION_URL`
 **Required.**
 
-The public URL of the **frontend** (Magdee website). Two things depend on this:
+The public URL of the **frontend** (Global Elite website). Two things depend on this:
 1. **CORS** — only this origin is allowed to call the public APIs (blog, services, etc.)
 2. **Cache clearing** — after publishing content, the CMS calls `{PRODUCTION_URL}/api/revalidate` to clear the Next.js cache.
 
@@ -142,7 +156,7 @@ The CMS uses **Nodemailer** with any standard SMTP server. The setup below uses 
 2. Click **Security** in the left sidebar.
 3. Under "How you sign in to Google", make sure **2-Step Verification is ON**. (App Passwords require 2FA to be enabled.)
 4. Go back to Security → scroll down → click **App passwords** (or search "App passwords" in the search bar).
-5. Under "App name" type anything, e.g. `MagDee CMS`.
+5. Under "App name" type anything, e.g. `Global Elite CMS`.
 6. Click **Create**.
 7. Google shows a 16-character password like `abcd efgh ijkl mnop`. **Copy it immediately** — it won't be shown again. Remove the spaces when pasting.
 
@@ -185,7 +199,7 @@ SMTP_PASSWORD=abcdefghijklmnop
 ### `SMTP_FROM`
 **Required.** The display name and address shown as the sender in the email client.
 ```
-SMTP_FROM="MagDee CMS <youraddress@gmail.com>"
+SMTP_FROM="Global Elite CMS <youraddress@gmail.com>"
 ```
 
 ---
@@ -246,7 +260,7 @@ NOTIFY_SMTP_PORT=587
 NOTIFY_SMTP_SECURE=false
 NOTIFY_SMTP_USER=alerts@yourdomain.com
 NOTIFY_SMTP_PASSWORD=that-accounts-password
-NOTIFY_SMTP_FROM="MagDee Alerts <alerts@yourdomain.com>"
+NOTIFY_SMTP_FROM="Global Elite Alerts <alerts@yourdomain.com>"
 ```
 
 Follow the same App Password steps above for whichever provider you use. If you skip these, the SMTP fallback kicks in and notifications go out from the same account as OTP emails.
@@ -330,9 +344,12 @@ HOSTINGER_MEDIA_URL=https://navajowhite-octopus-630288.hostingersite.com/media
 Copy this, fill in your values, and add it to Render (or wherever the CMS is hosted) under **Environment Variables**.
 
 ```env
-# ── Database ──────────────────────────────────────────────────────────
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/magdee-cms?retryWrites=true&w=majority
-DB_NAME=magdee-cms
+# ── Database (MySQL / Prisma) ─────────────────────────────────────────
+DATABASE_URL="mysql://u000000000_user:password@srv0000.hstgr.io:3306/u000000000_global_elite_cms?connection_limit=5"
+
+# Only needed while running the one-time Mongo → MySQL data migration:
+# MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/global-elite-cms-cms
+# DB_NAME=global-elite-cms-cms
 
 # ── Auth ──────────────────────────────────────────────────────────────
 JWT_SECRET=paste-openssl-rand-hex-32-output-here
@@ -347,7 +364,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=youraddress@gmail.com
 SMTP_PASSWORD=your16charapppassword
-SMTP_FROM="MagDee CMS <youraddress@gmail.com>"
+SMTP_FROM="Global Elite CMS <youraddress@gmail.com>"
 
 # ── Notification Email (registration alerts) ──────────────────────────
 # Uses the same SMTP account above. Only these two needed:

@@ -1,10 +1,25 @@
-import { connectDB } from "@/app/lib/config/db";
-import Category, { generateCategoryColor } from "@/app/lib/models/category";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
+
+// Palette that matches Global Elite frontend design system
+const CATEGORY_PALETTE = [
+  "#1e40af", // brand blue  (Engineering-style)
+  "#6d28d9", // purple      (Studio-style)
+  "#0f766e", // teal
+  "#b45309", // amber
+  "#be123c", // rose
+  "#15803d", // green
+  "#c2410c", // orange
+  "#7c3aed", // violet
+];
+
+function generateCategoryColor(name: string): string {
+  const hash = name.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
+}
 
 
 export async function POST(req: NextRequest) {
@@ -23,8 +38,6 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
-    // Connect to database
-    await connectDB();
 
     // Get request body
     const body = await req.json();
@@ -42,7 +55,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if slug already exists
-    const existingCategory = await Category.findOne({ slug: slug.toLowerCase().trim() });
+    const existingCategory = await prisma.category.findUnique({
+      where: { slug: slug.toLowerCase().trim() },
+    });
     if (existingCategory) {
       return NextResponse.json(
         {
@@ -55,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     // Validate parent category if provided
     if (parentCategory) {
-      const parent = await Category.findById(parentCategory);
+      const parent = await prisma.category.findUnique({ where: { id: parentCategory } });
       if (!parent) {
         return NextResponse.json(
           {
@@ -70,18 +85,15 @@ export async function POST(req: NextRequest) {
     // Use provided color or auto-generate from name
     const resolvedColor = (color && color.trim()) ? color.trim() : generateCategoryColor(name.trim());
 
-    // Prepare category data
-    const categoryData: any = {
-      name: name.trim(),
-      slug: slug.toLowerCase().trim(),
-      color: resolvedColor,
-      parentCategory: parentCategory || null,
-    };
-
     // Create the category
-    const category = await Category.create(categoryData);
-
-    const createdCategory = Array.isArray(category) ? category[0] : category;
+    const createdCategory = await prisma.category.create({
+      data: {
+        name: name.trim(),
+        slug: slug.toLowerCase().trim(),
+        color: resolvedColor,
+        parentId: parentCategory || null,
+      },
+    });
 
     // Return success response
     return NextResponse.json(
@@ -89,11 +101,11 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "Category created successfully!",
         category: {
-          id: createdCategory._id.toString(),
+          id: createdCategory.id,
           name: createdCategory.name,
           slug: createdCategory.slug,
           color: createdCategory.color,
-          parentCategory: createdCategory.parentCategory,
+          parentCategory: createdCategory.parentId,
         },
       },
       { status: 201 }
@@ -102,26 +114,13 @@ export async function POST(req: NextRequest) {
     console.error("Error creating category:", error);
 
     // Handle duplicate key error (slug)
-    if (error.code === 11000) {
+    if (error.code === "P2002") {
       return NextResponse.json(
         {
           success: false,
           message: "A category with this slug already exists.",
         },
         { status: 409 }
-      );
-    }
-
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err: any) => err.message);
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation error",
-          errors: errors,
-        },
-        { status: 400 }
       );
     }
 
@@ -154,8 +153,6 @@ export async function PUT(req: NextRequest) {
         { status: 401 }
       );
     }
-    // Connect to database
-    await connectDB();
 
     // Get request body
     const body = await req.json();
@@ -183,7 +180,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Check if category exists
-    const category = await Category.findById(id);
+    const category = await prisma.category.findUnique({ where: { id } });
     if (!category) {
       return NextResponse.json(
         {
@@ -196,11 +193,13 @@ export async function PUT(req: NextRequest) {
 
     // Check if slug already exists (excluding current category)
     const normalizedSlug = slug.toLowerCase().trim();
-    const existingCategory = await Category.findOne({ 
-      slug: normalizedSlug,
-      _id: { $ne: id } // Exclude current category
+    const existingCategory = await prisma.category.findFirst({
+      where: {
+        slug: normalizedSlug,
+        id: { not: id }, // Exclude current category
+      },
     });
-    
+
     if (existingCategory) {
       return NextResponse.json(
         {
@@ -224,7 +223,7 @@ export async function PUT(req: NextRequest) {
         );
       }
 
-      const parent = await Category.findById(parentCategory);
+      const parent = await prisma.category.findUnique({ where: { id: parentCategory } });
       if (!parent) {
         return NextResponse.json(
           {
@@ -236,17 +235,19 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // Update category data
-    category.name = name.trim();
-    category.slug = normalizedSlug;
-    category.parentCategory = parentCategory || null;
-    // Keep existing color if no new one provided; generate fresh if name changed and no color set
-    category.color = (color && color.trim())
-      ? color.trim()
-      : (category.color || generateCategoryColor(name.trim()));
-
     // Save the updated category
-    const updatedCategory = await category.save();
+    const updatedCategory = await prisma.category.update({
+      where: { id },
+      data: {
+        name: name.trim(),
+        slug: normalizedSlug,
+        parentId: parentCategory || null,
+        // Keep existing color if no new one provided; generate fresh if name changed and no color set
+        color: (color && color.trim())
+          ? color.trim()
+          : (category.color || generateCategoryColor(name.trim())),
+      },
+    });
 
     // Return success response
     return NextResponse.json(
@@ -254,11 +255,11 @@ export async function PUT(req: NextRequest) {
         success: true,
         message: "Category updated successfully!",
         category: {
-          id: updatedCategory._id.toString(),
+          id: updatedCategory.id,
           name: updatedCategory.name,
           slug: updatedCategory.slug,
           color: updatedCategory.color,
-          parentCategory: updatedCategory.parentCategory,
+          parentCategory: updatedCategory.parentId,
         },
       },
       { status: 200 }
@@ -267,26 +268,13 @@ export async function PUT(req: NextRequest) {
     console.error("Error updating category:", error);
 
     // Handle duplicate key error (slug)
-    if (error.code === 11000) {
+    if (error.code === "P2002") {
       return NextResponse.json(
         {
           success: false,
           message: "A category with this slug already exists.",
         },
         { status: 409 }
-      );
-    }
-
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err: any) => err.message);
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation error",
-          errors: errors,
-        },
-        { status: 400 }
       );
     }
 
@@ -304,18 +292,15 @@ export async function PUT(req: NextRequest) {
 // DELETE - Delete category
 export async function DELETE(req: NextRequest) {
   try {
-    // Connect to database
-    await connectDB();
-
     // Get current user (authorization check)
     const userResult = await requireRole(req, CONTENT_ROLES);
 
-    
+
     // Check if getCurrentUser returned an error response (NextResponse)
     if (userResult instanceof NextResponse) {
       return userResult; // Return the unauthorized response
     }
-    
+
     // Extract user ID from decoded token
     const userId = userResult.id;
 
@@ -344,7 +329,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Check if category exists
-    const category = await Category.findById(id);
+    const category = await prisma.category.findUnique({ where: { id } });
     if (!category) {
       return NextResponse.json(
         {
@@ -356,7 +341,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Check if category has children
-    const hasChildren = await Category.findOne({ parentCategory: id });
+    const hasChildren = await prisma.category.findFirst({ where: { parentId: id } });
     if (hasChildren) {
       return NextResponse.json(
         {
@@ -368,8 +353,9 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Check if category is used in any posts
-    const Post = (await import("@/app/lib/models/post")).default;
-    const postsUsingCategory = await Post.countDocuments({ category: id });
+    const postsUsingCategory = await prisma.post.count({
+      where: { categories: { some: { id } } },
+    });
     if (postsUsingCategory > 0) {
       return NextResponse.json(
         {
@@ -381,7 +367,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Delete the category
-    await Category.findByIdAndDelete(id);
+    await prisma.category.delete({ where: { id } });
 
     return NextResponse.json(
       {
@@ -418,9 +404,6 @@ export async function DELETE(req: NextRequest) {
 // GET - Fetch single category by ID
 export async function GET(req: NextRequest) {
   try {
-    // Connect to database
-    await connectDB();
-
     // Get query parameters
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -436,8 +419,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Validate ObjectId format
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    // Validate ID format
+    if (typeof id !== "string" || id.trim().length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -447,56 +430,41 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    try {
-      // Fetch the category with populated parent category if it exists
-      const category = await Category.findById(id)
-        .populate("parentCategory", "name slug _id")
-        .lean();
+    // Fetch the category with its parent category if it exists
+    const category = await prisma.category.findUnique({
+      where: { id },
+      include: {
+        parent: { select: { id: true, name: true, slug: true } },
+      },
+    });
 
-      if (!category) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Category not found.",
-          },
-          { status: 404 }
-        );
-      }
-
-      // Return success response with category data
+    if (!category) {
       return NextResponse.json(
         {
-          success: true,
-          category: category,
+          success: false,
+          message: "Category not found.",
         },
-        { status: 200 }
+        { status: 404 }
       );
-    } catch (findError: any) {
-      // Handle findById specific errors
-      if (findError.name === "CastError") {
-        return NextResponse.json(
-          {
-            success: false,
-            message: "Invalid category ID format.",
-          },
-          { status: 400 }
-        );
-      }
-      throw findError; // Re-throw if it's not a CastError
     }
+
+    // Map Prisma field names back to the API contract
+    const { parent, parentId: _parentId, ...rest } = category;
+    const responseCategory = withMongoId({
+      ...rest,
+      parentCategory: parent ?? null,
+    });
+
+    // Return success response with category data
+    return NextResponse.json(
+      {
+        success: true,
+        category: responseCategory,
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error("Error fetching category:", error);
-
-    // Handle invalid ObjectId format
-    if (error.name === "CastError") {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid category ID format.",
-        },
-        { status: 400 }
-      );
-    }
 
     return NextResponse.json(
       {

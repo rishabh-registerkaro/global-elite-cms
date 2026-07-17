@@ -1,14 +1,10 @@
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
-import OTP from "@/app/lib/models/otp";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 export async function POST(req: NextRequest) {
     try {
-        await connectDB();
-
         const { email, newPassword } = await req.json();
 
         // Validation
@@ -81,11 +77,15 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Verify OTP was verified
-        const otpRecord = await OTP.findOne({
-            _id: decoded.otpId,
-            email: email.toLowerCase(),
-            verified: true,
+        // Verify OTP was verified (expired OTPs were auto-deleted by the
+        // Mongo TTL index before; now they are filtered out here instead)
+        const otpRecord = await prisma.otp.findFirst({
+            where: {
+                id: decoded.otpId,
+                email: email.toLowerCase(),
+                verified: true,
+                expiresAt: { gt: new Date() },
+            },
         });
 
         if (!otpRecord) {
@@ -99,7 +99,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Check if user exists and get current password
-        const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+        // (fetched WITH password for comparison; never returned to client)
+        const user = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+        });
         if (!user) {
             return NextResponse.json(
                 {
@@ -126,13 +129,13 @@ export async function POST(req: NextRequest) {
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         // Update user password
-        await User.findOneAndUpdate(
-            { email: email.toLowerCase() },
-            { password: hashedPassword }
-        );
+        await prisma.user.update({
+            where: { email: email.toLowerCase() },
+            data: { password: hashedPassword },
+        });
 
         // Delete used OTP
-        await OTP.deleteOne({ _id: otpRecord._id });
+        await prisma.otp.deleteMany({ where: { id: otpRecord.id } });
 
         // Clear reset token cookie
         const response = NextResponse.json({

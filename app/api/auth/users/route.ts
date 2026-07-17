@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
+import prisma from "@/app/lib/config/db";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 
 export async function GET(req: NextRequest) {
@@ -19,12 +18,14 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        await connectDB();
-        const users = await User.find().select("_id username").sort({ username: 1 }).lean();
+        const users = await prisma.user.findMany({
+            select: { id: true, username: true },
+            orderBy: { username: "asc" },
+        });
 
         const formattedUsers = users.map((user) => ({
-            _id: user._id.toString(),
-            id: user._id.toString(),
+            _id: user.id,
+            id: user.id,
             username: user.username,
         }));
 

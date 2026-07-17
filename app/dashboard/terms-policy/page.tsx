@@ -20,8 +20,8 @@ interface TermsPolicyFormData {
 }
 
 const defaultFormData: TermsPolicyFormData = {
-    metaTitle: "Terms & Privacy Policy · MagDee",
-    metaDescription: "Read the terms and conditions and privacy policy governing your use of MagDee products and services.",
+    metaTitle: "Terms & Privacy Policy · Global Elite",
+    metaDescription: "Read the terms and conditions and privacy policy governing your use of Global Elite products and services.",
     title: "Terms & Policy",
     subTitle: "Please read these terms carefully before using our services.",
     content: { body: "" },
@@ -232,7 +232,7 @@ export default function TermsPolicyDashboardPage() {
                                             className={inputCls}
                                             value={formData.metaTitle}
                                             onChange={(e) => setField("metaTitle", e.target.value)}
-                                            placeholder="Terms & Privacy Policy · MagDee"
+                                            placeholder="Terms & Privacy Policy · Global Elite"
                                         />
                                     </div>
                                     <div>

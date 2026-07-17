@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import mongoose from "mongoose";
+import prisma from "@/app/lib/config/db";
 
 export async function GET(req: NextRequest) {
     const start = Date.now();
@@ -9,10 +8,8 @@ export async function GET(req: NextRequest) {
     let dbError: string | null = null;
 
     try {
-        await connectDB();
-        // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
-        const state = mongoose.connection.readyState;
-        dbStatus = state === 1 ? "connected" : "disconnected";
+        await prisma.$queryRaw`SELECT 1`;
+        dbStatus = "connected";
     } catch (err: any) {
         dbStatus = "error";
         dbError = err.message || "Unknown DB error";

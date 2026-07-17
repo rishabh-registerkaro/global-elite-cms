@@ -81,34 +81,34 @@ interface ContactFormData {
 }
 
 const defaultFormData: ContactFormData = {
-    metaTitle: "Contact Us — Say hi. One of us reads it. · MagDee",
+    metaTitle: "Contact Us — Say hi. One of us reads it. · Global Elite",
     metaDescription: "No support queue, no ticketing system, no chatbot. Three founders and a small team handle every email — usually within a working day.",
     content: {
         heroSection: {
             badge: "Get in touch",
             hours: "Mon-Fri · 09:00-19:00 IST",
             contactCards: [
-                { label: "Email Us", value: "hello@magdee.in", detail: "One of us within 24 hrs" },
+                { label: "Email Us", value: "hello@global-elite-cms.in", detail: "One of us within 24 hrs" },
                 { label: "Visit Us", value: "Coimbatore HQ", detail: "By appointment only" },
-                { label: "Or in Tamil", value: "வணக்கம்", detail: "vanakkam@magdee.in" },
-                { label: "Press Inbox", value: "press@magdee.in", detail: "Embargoed inquiries welcome" },
+                { label: "Or in Tamil", value: "வணக்கம்", detail: "vanakkam@global-elite-cms.in" },
+                { label: "Press Inbox", value: "press@global-elite-cms.in", detail: "Embargoed inquiries welcome" },
             ],
         },
         inboxesSection: {
             badge: "02 — Pick the right door",
             description: "We split mail by topic, not by tier — there's no 'premium' address. Whichever you write to, a real person responds within a working day.",
             inboxes: [
-                { label: "Product", email: "product@magdee.in", detail: "VOChef, Mee Tory, Ellamly — feedback, bugs, feature requests", personName: "Arjun", personInitial: "A" },
-                { label: "Press", email: "press@magdee.in", detail: "Interviews, embargoed news, press kit downloads", personName: "Saanvi", personInitial: "S" },
-                { label: "Partnerships", email: "partners@magdee.in", detail: "Integrations, distribution, enterprise inquiries", personName: "Arjun", personInitial: "A" },
-                { label: "Careers", email: "careers@magdee.in", detail: "Job applications, internships, contract work", personName: "Vikram", personInitial: "V" },
-                { label: "Support", email: "support@magdee.in", detail: "Help with the apps, billing questions, account issues", personName: "Saanvi", personInitial: "S" },
-                { label: "Just Hello", email: "hello@magdee.in", detail: "Anything else — in Tamil, English, or Hindi", personName: "Arjun", personInitial: "A" },
+                { label: "Product", email: "product@global-elite-cms.in", detail: "VOChef, Mee Tory, Ellamly — feedback, bugs, feature requests", personName: "Arjun", personInitial: "A" },
+                { label: "Press", email: "press@global-elite-cms.in", detail: "Interviews, embargoed news, press kit downloads", personName: "Saanvi", personInitial: "S" },
+                { label: "Partnerships", email: "partners@global-elite-cms.in", detail: "Integrations, distribution, enterprise inquiries", personName: "Arjun", personInitial: "A" },
+                { label: "Careers", email: "careers@global-elite-cms.in", detail: "Job applications, internships, contract work", personName: "Vikram", personInitial: "V" },
+                { label: "Support", email: "support@global-elite-cms.in", detail: "Help with the apps, billing questions, account issues", personName: "Saanvi", personInitial: "S" },
+                { label: "Just Hello", email: "hello@global-elite-cms.in", detail: "Anything else — in Tamil, English, or Hindi", personName: "Arjun", personInitial: "A" },
             ],
         },
         headquartersSection: {
             badge: "03 — Headquarters",
-            companyName: "MagDee Technologies Pvt. Ltd.",
+            companyName: "Global Elite Technologies Pvt. Ltd.",
             address: "Floor 2, No. 47, Race Course Road\nRS Puram, Coimbatore — 641 002\nTamil Nadu, India",
             mapsUrl: "https://maps.google.com/?q=11.0168,76.9558",
             phone: "+91 422 4567 890",
@@ -124,9 +124,9 @@ const defaultFormData: ContactFormData = {
             description: "Most questions we get are these five. If yours isn't, write anyway — we'd genuinely rather hear from you.",
             faqs: [
                 { question: "How fast do you actually reply?", answer: "Within one working day, usually faster. We don't use auto-responders, ticketing systems, or 'Your call is important to us' anything. A real person reads every email, and the same person writes back." },
-                { question: "Do you offer enterprise pricing?", answer: "Yes — for teams above 25 seats. Write to partners@magdee.in with a rough headcount and use case. We'll send a quote within a working day, no demo gauntlet required." },
-                { question: "Can I visit the Coimbatore office?", answer: "Absolutely — we love visitors. Mail hello@magdee.in with a date, and we'll either confirm or suggest one that works. Filter coffee on us." },
-                { question: "Are you hiring?", answer: "Quietly, always. If you're a builder who values craft over churn, send a note and a portfolio (or a project, or a thing you wrote) to careers@magdee.in. We read every one." },
+                { question: "Do you offer enterprise pricing?", answer: "Yes — for teams above 25 seats. Write to partners@global-elite-cms.in with a rough headcount and use case. We'll send a quote within a working day, no demo gauntlet required." },
+                { question: "Can I visit the Coimbatore office?", answer: "Absolutely — we love visitors. Mail hello@global-elite-cms.in with a date, and we'll either confirm or suggest one that works. Filter coffee on us." },
+                { question: "Are you hiring?", answer: "Quietly, always. If you're a builder who values craft over churn, send a note and a portfolio (or a project, or a thing you wrote) to careers@global-elite-cms.in. We read every one." },
                 { question: "Will you ship to my country / language?", answer: "Today: India + iOS + Tamil/English/Hindi. On the roadmap: more languages first, more platforms second. Tell us where you are — we keep a quiet list and write to people in the order they asked." },
             ],
         },
@@ -134,7 +134,7 @@ const defaultFormData: ContactFormData = {
             badge: "Stay quietly informed",
             heading: "We email about once a quarter.",
             description: "No drip campaigns, no 'thought leadership', no marketing automation. Just a short note when something genuine has shipped or changed.",
-            email: "hello@magdee.in",
+            email: "hello@global-elite-cms.in",
         },
     },
 };
@@ -496,7 +496,7 @@ export default function ContactDashboardPage() {
                                                         </div>
                                                         <div>
                                                             <label className={labelCls}>Value</label>
-                                                            <Input className={inputCls} value={card.value} onChange={(e) => updateContactCard(i, "value", e.target.value)} placeholder="hello@magdee.in" />
+                                                            <Input className={inputCls} value={card.value} onChange={(e) => updateContactCard(i, "value", e.target.value)} placeholder="hello@global-elite-cms.in" />
                                                         </div>
                                                         <div>
                                                             <label className={labelCls}>Detail</label>
@@ -552,7 +552,7 @@ export default function ContactDashboardPage() {
                                                         </div>
                                                         <div>
                                                             <label className={labelCls}>Email</label>
-                                                            <Input className={inputCls} value={inbox.email} onChange={(e) => updateInbox(i, "email", e.target.value)} placeholder="product@magdee.in" />
+                                                            <Input className={inputCls} value={inbox.email} onChange={(e) => updateInbox(i, "email", e.target.value)} placeholder="product@global-elite-cms.in" />
                                                         </div>
                                                         <div className="col-span-2">
                                                             <label className={labelCls}>Detail</label>
@@ -720,7 +720,7 @@ export default function ContactDashboardPage() {
                                     </div>
                                     <div>
                                         <label className={labelCls}>Newsletter Email <span className="normal-case tracking-normal text-slate-500">— mailto target</span></label>
-                                        <Input className={inputCls} value={formData.content.newsletterSection.email} onChange={(e) => setNewsletter("email", e.target.value)} placeholder="hello@magdee.in" />
+                                        <Input className={inputCls} value={formData.content.newsletterSection.email} onChange={(e) => setNewsletter("email", e.target.value)} placeholder="hello@global-elite-cms.in" />
                                     </div>
                                 </div>
                             </Collapsible.Content>

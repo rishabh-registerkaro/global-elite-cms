@@ -1,5 +1,5 @@
-import { connectDB } from "@/app/lib/config/db";
-import Lead from "@/app/lib/models/lead";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { getCurrentUser } from "@/app/lib/utils/getCurrentUser";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -20,11 +20,10 @@ export async function DELETE(
         { status: 401 }
       );
     }
-    await connectDB();
 
-    const deleteLead = await Lead.findByIdAndDelete(id);
+    const existingLead = await prisma.lead.findUnique({ where: { id } });
 
-    if (!deleteLead) {
+    if (!existingLead) {
       return NextResponse.json(
         {
           message: "Lead Not found corresponding to this id",
@@ -34,8 +33,11 @@ export async function DELETE(
         }
       );
     }
+
+    const deleteLead = await prisma.lead.delete({ where: { id } });
+
     return NextResponse.json(
-      { message: "Lead Deleted Successfully", deletedLead: deleteLead },
+      { message: "Lead Deleted Successfully", deletedLead: withMongoId(deleteLead) },
       { status: 200 }
     );
   } catch (error) {
@@ -64,21 +66,60 @@ export async function PUT(
         { status: 401 }
       );
     }
-    await connectDB();
     const body = await req.json();
-    const updatedLead = await Lead.findByIdAndUpdate(id, body, {
-      new: true,
-    });
 
-    if (!updatedLead) {
+    // Only known Lead fields — Mongoose silently ignored unknown keys,
+    // Prisma would throw on them.
+    const ALLOWED_FIELDS = [
+      "name",
+      "email",
+      "phoneNo",
+      "companyName",
+      "region",
+      "serviceSelected",
+      "message",
+      "status",
+      "leadSource",
+      "hasPayment",
+      "packageId",
+      "packageName",
+      "razorpayOrderId",
+      "razorpayPaymentId",
+      "razorpaySignature",
+      "paymentStatus",
+      "amount",
+      "currency",
+      "paymentMethod",
+      "paidAt",
+      "adminNotes",
+      "lastContactedAt",
+    ] as const;
+
+    const data: Record<string, any> = {};
+    for (const field of ALLOWED_FIELDS) {
+      if (body[field] !== undefined) {
+        data[field] = body[field];
+      }
+    }
+    if (data.paidAt) data.paidAt = new Date(data.paidAt);
+    if (data.lastContactedAt) data.lastContactedAt = new Date(data.lastContactedAt);
+
+    const existingLead = await prisma.lead.findUnique({ where: { id } });
+
+    if (!existingLead) {
       return NextResponse.json(
         { message: "Lead corresponding to this id not found" },
         { status: 404 }
       );
     }
 
+    const updatedLead = await prisma.lead.update({
+      where: { id },
+      data,
+    });
+
     return NextResponse.json(
-      { message: "Updated Lead data", updatedLead: updatedLead },
+      { message: "Updated Lead data", updatedLead: withMongoId(updatedLead) },
       { status: 200 }
     );
   } catch (error) {

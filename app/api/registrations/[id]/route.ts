@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import Registration from "@/app/lib/models/registration";
+import prisma from "@/app/lib/config/db";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { ADMIN_ROLES } from "@/app/lib/constants/role";
-import mongoose from "mongoose";
 
 export async function DELETE(
   req: NextRequest,
@@ -15,15 +13,19 @@ export async function DELETE(
 
     const { id } = await context.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (typeof id !== "string" || id.length === 0) {
       return NextResponse.json(
         { success: false, message: "Invalid ID" },
         { status: 400 }
       );
     }
 
-    await connectDB();
-    const deleted = await Registration.findByIdAndDelete(id);
+    const deleted = await prisma.registration
+      .delete({ where: { id } })
+      .catch((error: any) => {
+        if (error?.code === "P2025") return null;
+        throw error;
+      });
 
     if (!deleted) {
       return NextResponse.json(

@@ -320,7 +320,7 @@ export function AppSidebar() {
           {state === "expanded" && (
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-white">
-                Megdee AI
+                Global Elite
               </span>
               <span className="text-xs text-slate-400">
                 Content Management System

@@ -1,5 +1,4 @@
-import { connectDB } from "@/app/lib/config/db";
-import ServicePageModel from "@/app/lib/models/service";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 
 const getCorsHeaders = (origin: string | null) => {
@@ -19,15 +18,13 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     try {
-        await connectDB();
+        const services = await prisma.servicePage.findMany({
+            select: { id: true, slug: true, updatedAt: true },
+            orderBy: { updatedAt: "desc" },
+        });
 
-        const services = await ServicePageModel.find()
-            .select("_id slug updatedAt")
-            .sort({ updatedAt: -1 })
-            .lean();
-
-        const data = services.map((s: any) => ({
-            id: s._id.toString(),
+        const data = services.map((s) => ({
+            id: s.id,
             slug: s.slug,
             updatedAt: s.updatedAt,
         }));

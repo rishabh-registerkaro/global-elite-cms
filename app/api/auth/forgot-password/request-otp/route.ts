@@ -1,13 +1,9 @@
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
-import OTP from "@/app/lib/models/otp";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sendOTP } from "@/app/lib/config/email";
 
 export async function POST(req: NextRequest) {
     try {
-        await connectDB();
-
         const { email } = await req.json();
 
         // validation
@@ -31,7 +27,10 @@ export async function POST(req: NextRequest) {
         }
 
         // checking if user exists
-        const user = await User.findOne({ email: email.toLowerCase() });
+        const user = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+            select: { id: true },
+        });
 
         // security: not revealing user exits or not
         if (!user) {
@@ -44,21 +43,30 @@ export async function POST(req: NextRequest) {
         // Generate 6-digit OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+        // Opportunistic cleanup of expired OTPs (replaces MongoDB TTL index)
+        await prisma.otp.deleteMany({
+            where: { expiresAt: { lt: new Date() } },
+        });
+
         // Delete any existing unverified OTPs for this email
-        await OTP.deleteMany({
-            email: email.toLowerCase(),
-            verified: false,
+        await prisma.otp.deleteMany({
+            where: {
+                email: email.toLowerCase(),
+                verified: false,
+            },
         });
 
         // create new OTP (expires in 10 minutes);
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 10);
 
-        await OTP.create({
-            email: email.toLowerCase(),
-            otp: otpCode,
-            expiresAt,
-            verified: false,
+        await prisma.otp.create({
+            data: {
+                email: email.toLowerCase(),
+                otp: otpCode,
+                expiresAt,
+                verified: false,
+            },
         })
 
         // sending OTP to email
@@ -69,9 +77,11 @@ export async function POST(req: NextRequest) {
             console.error("Error sending email:", error);
 
             // Delete the OTP record if email fails
-            await OTP.deleteMany({
-                email: email.toLowerCase(),
-                otp: otpCode,
+            await prisma.otp.deleteMany({
+                where: {
+                    email: email.toLowerCase(),
+                    otp: otpCode,
+                },
             });
 
             return NextResponse.json(

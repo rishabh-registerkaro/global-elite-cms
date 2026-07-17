@@ -1,12 +1,11 @@
-import { connectDB } from "@/app/lib/config/db";
-import Post from "@/app/lib/models/post";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 
 
 
 // CORS headers helper - REPLACE THE HARDCODED ONE
 const getCorsHeaders = (origin: string | null) => {
-    const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://magdee-coral.vercel.app';
+    const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
     if (origin === PRODUCTION_URL) {
         return {
             'Access-Control-Allow-Origin': PRODUCTION_URL,
@@ -37,8 +36,6 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     try {
-        await connectDB();
-
         // Get slug from query parameters
         const { searchParams } = new URL(req.url);
         const slug = searchParams.get("slug");
@@ -54,79 +51,20 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        // Use aggregation pipeline instead of populate (more efficient and doesn't require User model registration)
-        const posts = await Post.aggregate([
-            // Match post by slug and status
-            {
-                $match: {
-                    slug: slug.trim().toLowerCase(),
-                    status: "published"
-                }
+        // Fetch post by slug and status with author + categories
+        const post = await prisma.post.findFirst({
+            where: {
+                slug: slug.trim().toLowerCase(),
+                status: "published",
             },
-            // Populate author using $lookup
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: "author",
-                    foreignField: "_id",
-                    as: "author"
-                }
+            include: {
+                author: { select: { id: true, username: true, email: true } },
+                categories: { select: { id: true, name: true, slug: true, color: true } },
             },
-            // Unwind author array to get single author object
-            {
-                $unwind: {
-                    path: '$author',
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            // Populate category using $lookup
-            {
-                $lookup: {
-                    from: 'categories',
-                    localField: "category",
-                    foreignField: "_id",
-                    as: "category"
-                }
-            },
-            // Project all fields we need
-            {
-                $project: {
-                    _id: 1,
-                    title: 1,
-                    slug: 1,
-                    excerpt: 1,
-                    content: 1,
-                    featuredImage: 1,
-                    status: 1,
-                    publishedAt: 1,
-                    createdAt: 1,
-                    updatedAt: 1,
-                    faq_items: 1,
-                    additionalFields: 1,
-                    schema: 1,
-                    author: {
-                        _id: '$author._id',
-                        username: '$author.username',
-                        email: '$author.email'
-                    },
-                    category: {
-                        $map: {
-                            input: '$category',
-                            as: 'cat',
-                            in: {
-                                _id: '$$cat._id',
-                                name: '$$cat.name',
-                                slug: '$$cat.slug',
-                                color: '$$cat.color',
-                            }
-                        }
-                    }
-                }
-            }
-        ]);
+        });
 
         // Check if post was found
-        if (!posts || posts.length === 0) {
+        if (!post) {
             return NextResponse.json({
                 success: false,
                 message: "Post not found or not published",
@@ -134,13 +72,11 @@ export async function GET(req: NextRequest) {
                 status: 404,
                 headers: getCorsHeaders(req.headers.get('origin'))
             });
-        }   
-
-        const post = posts[0];
+        }
 
         // Transform the response to include all post data
         const transformedPost = {
-            id: post._id.toString(),
+            id: post.id,
             title: post.title,
             slug: post.slug,
             excerpt: post.excerpt || null,
@@ -151,21 +87,21 @@ export async function GET(req: NextRequest) {
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
             author: post.author ? {
-                id: post.author._id.toString(),
+                id: post.author.id,
                 username: post.author.username,
                 email: post.author.email
             } : null,
-            category: Array.isArray(post.category)
-                ? post.category.map((cat: any) => ({
-                    id: cat._id.toString(),
+            category: Array.isArray(post.categories)
+                ? post.categories.map((cat) => ({
+                    id: cat.id,
                     name: cat.name,
                     slug: cat.slug,
                     color: cat.color || "",
                 }))
                 : [],
-            faq_items: post.faq_items || [],
+            faq_items: post.faqItems || [],
             additionalFields: post.additionalFields || {},
-            schema: post.schema || null,
+            schema: post.schemaJson || null,
         };
 
         return NextResponse.json({

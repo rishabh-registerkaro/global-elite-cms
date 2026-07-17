@@ -1,7 +1,5 @@
 import { NextResponse, NextRequest } from "next/server";
-import { connectDB } from "@/app/lib/config/db";
-import User from "@/app/lib/models/user";
-import mongoose from "mongoose";
+import prisma from "@/app/lib/config/db";
 import bcrypt from "bcrypt";
 
 
@@ -24,20 +22,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
 
         const { id } = await context.params;
 
-        // Validate ObjectId format
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        // Validate ID format
+        if (!(typeof id === "string" && id.length > 0)) {
             return NextResponse.json({
                 success: false,
                 message: "Invalid User ID format"
             }, { status: 400 });
         }
 
-        await connectDB();
-
         // Fetch the user (excluding password)
-        const user = await User.findById(id)
-            .select('_id username email createdAt updatedAt role')
-            .lean()
+        const user = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, username: true, email: true, createdAt: true, updatedAt: true, role: true },
+        });
 
         if (!user) {
             return NextResponse.json({
@@ -47,7 +44,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         }
 
         const formattedUser = {
-            id: user._id.toString(),
+            id: user.id,
             username: user.username,
             email: user.email,
             createdAt: user.createdAt,
@@ -61,17 +58,6 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         }, { status: 200 })
     } catch (error: any) {
         console.error("Get user by ID error:", error);
-
-        // Handle CastError
-        if (error.name === "CastError") {
-            return NextResponse.json(
-                {
-                    success: false,
-                    message: "Invalid user ID format.",
-                },
-                { status: 400 }
-            );
-        }
 
         return NextResponse.json(
             { success: false, message: "Failed to fetch user details." },
@@ -90,8 +76,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         const currentUser = userResult;
         const { id } = await context.params;
 
-        // validate objectid format
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        // validate id format
+        if (!(typeof id === "string" && id.length > 0)) {
             return NextResponse.json({
                 success: false,
                 message: "Invalid User ID format"
@@ -105,9 +91,12 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         const body = await req.json();
         const { role, newPassword, currentPassword } = body;
 
-        await connectDB();
-
-        const targetUser = await updatePassword ? await User.findById(id).select("+password _id username email role") : await User.findById(id).select("_id username email role");
+        // Fetched WITH password (needed for password-update comparison);
+        // the password is never returned to the client.
+        const targetUser = await prisma.user.findUnique({
+            where: { id },
+            select: { id: true, username: true, email: true, role: true, password: true },
+        });
 
         if (!targetUser) {
             return NextResponse.json({
@@ -155,7 +144,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
                 }
 
                 // Verify current password
-                const isCurrentPasswordValid = await targetUser.comparePassword(currentPassword);
+                const isCurrentPasswordValid = await bcrypt.compare(currentPassword, targetUser.password);
                 if (!isCurrentPasswordValid) {
                     return NextResponse.json({
                         success: false,
@@ -177,9 +166,11 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             // Hash new password
             const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
-            // Update password 
-            targetUser.password = hashedNewPassword;
-            await targetUser.save();
+            // Update password
+            await prisma.user.update({
+                where: { id },
+                data: { password: hashedNewPassword },
+            });
 
             return NextResponse.json({
                 success: true,
@@ -232,29 +223,25 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             }
 
             // update the user's role
-            targetUser.role = role;
-            await targetUser.save();
+            const updatedUser = await prisma.user.update({
+                where: { id },
+                data: { role },
+                select: { id: true, username: true, email: true, role: true },
+            });
 
             return NextResponse.json({
                 success: true,
                 message: "User role updated successfully",
                 user: {
-                    id: targetUser._id.toString(),
-                    username: targetUser.username,
-                    email: targetUser.email,
-                    role: targetUser.role,
+                    id: updatedUser.id,
+                    username: updatedUser.username,
+                    email: updatedUser.email,
+                    role: updatedUser.role,
                 }
             }, { status: 200 })
         }
     } catch (error: any) {
         console.error("Update user error:", error);
-
-        if (error.name === "CastError") {
-            return NextResponse.json({
-                success: false,
-                message: "Invalid user ID format.",
-            }, { status: 400 });
-        }
 
         return NextResponse.json(
             { success: false, message: "Failed to update user." },

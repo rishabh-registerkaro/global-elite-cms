@@ -1,11 +1,11 @@
-import { connectDB } from "@/app/lib/config/db";
-import ServicePageModel from "@/app/lib/models/service";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { NextRequest, NextResponse } from "next/server";
 // bug fix
 
 // CORS headers helper
 const getCorsHeaders = (origin: string | null) => {
-    const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://magdee-coral.vercel.app';
+    const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://global-elite-cms-coral.vercel.app';
     if (origin === PRODUCTION_URL) {
         return {
             'Access-Control-Allow-Origin': PRODUCTION_URL,
@@ -40,16 +40,23 @@ export async function GET(
     context: { params: Promise<{ slug: string }> }
 ) {
     try {
-        await connectDB();
         const { slug } = await context.params;
-        const servicePage = await ServicePageModel.findOne({ slug }).populate("author", "username").sort({
-            created: -1,
+        const servicePage = await prisma.servicePage.findUnique({
+            where: { slug },
+            include: { author: { select: { id: true, username: true } } },
         });
+
+        const serialized = servicePage
+            ? (() => {
+                const { authorId, ...rest } = servicePage;
+                return withMongoId(rest);
+              })()
+            : null;
 
         const origin = req.headers.get('origin');
         return NextResponse.json(
-            { message: " Service Pages Fetched Successfully", servicePages: servicePage },
-            { 
+            { message: " Service Pages Fetched Successfully", servicePages: serialized },
+            {
                 status: 200,
                 headers: getCorsHeaders(origin)
             }
@@ -59,7 +66,7 @@ export async function GET(
         const origin = req.headers.get('origin');
         return NextResponse.json(
             { message: "Internal Server Error-Error fetching service pages" },
-            { 
+            {
                 status: 500,
                 headers: getCorsHeaders(origin)
             }

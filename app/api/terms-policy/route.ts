@@ -1,11 +1,12 @@
-import { connectDB } from "@/app/lib/config/db";
-import TermsPolicyModel from "@/app/lib/models/termsAndConditions";
+import prisma from "@/app/lib/config/db";
+import { withMongoId } from "@/app/lib/utils/serialize";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { ADMIN_ROLES } from "@/app/lib/constants/role";
 import { NextResponse, NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 
 const getCorsHeaders = (origin: string | null) => {
-    const PRODUCTION_URL = process.env.PRODUCTION_URL || "https://magdee-coral.vercel.app";
+    const PRODUCTION_URL = process.env.PRODUCTION_URL || "https://global-elite-cms-coral.vercel.app";
     const normalize = (u: string) => u.replace(/\/$/, "");
 
     if (origin && normalize(origin) === normalize(PRODUCTION_URL)) {
@@ -29,14 +30,17 @@ const getCorsHeaders = (origin: string | null) => {
     };
 };
 
+// Nullable Json columns need Prisma.JsonNull instead of plain null
+const jsonValue = (v: unknown) =>
+    v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue);
+
 export async function OPTIONS(req: NextRequest) {
     return NextResponse.json({}, { headers: getCorsHeaders(req.headers.get("origin")) });
 }
 
 export async function GET(req: NextRequest) {
     try {
-        await connectDB();
-        const doc = await TermsPolicyModel.findOne().lean();
+        const doc = await prisma.termsPolicy.findFirst();
         const corsHeaders = getCorsHeaders(req.headers.get("origin"));
 
         if (!doc) {
@@ -53,7 +57,7 @@ export async function GET(req: NextRequest) {
                     subTitle: doc.subTitle,
                     content: doc.content,
                     privacyPolicyContent: doc.privacyPolicyContent,
-                    updatedAt: (doc as any).updatedAt,
+                    updatedAt: doc.updatedAt,
                 },
             },
             { headers: corsHeaders }
@@ -69,8 +73,7 @@ export async function POST(req: NextRequest) {
         const authResult = await requireRole(req, ADMIN_ROLES);
         if (authResult instanceof NextResponse) return authResult;
 
-        await connectDB();
-        const existing = await TermsPolicyModel.findOne();
+        const existing = await prisma.termsPolicy.findFirst();
         if (existing) {
             return NextResponse.json(
                 { success: false, message: "Terms & Policy already exists. Use PATCH to update." },
@@ -79,16 +82,18 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const doc = await TermsPolicyModel.create({
-            metaTitle: body.metaTitle,
-            metaDescription: body.metaDescription,
-            title: body.title,
-            subTitle: body.subTitle,
-            content: body.content ?? {},
-            privacyPolicyContent: body.privacyPolicyContent ?? {},
+        const doc = await prisma.termsPolicy.create({
+            data: {
+                metaTitle: body.metaTitle,
+                metaDescription: body.metaDescription,
+                title: body.title,
+                subTitle: body.subTitle,
+                content: (body.content ?? {}) as Prisma.InputJsonValue,
+                privacyPolicyContent: (body.privacyPolicyContent ?? {}) as Prisma.InputJsonValue,
+            },
         });
 
-        return NextResponse.json({ success: true, data: doc }, { status: 201 });
+        return NextResponse.json({ success: true, data: withMongoId(doc) }, { status: 201 });
     } catch (error) {
         console.error("POST /api/terms-policy error:", error);
         return NextResponse.json({ success: false, message: "Failed to create terms & policy." }, { status: 500 });
@@ -100,10 +105,9 @@ export async function PATCH(req: NextRequest) {
         const authResult = await requireRole(req, ADMIN_ROLES);
         if (authResult instanceof NextResponse) return authResult;
 
-        await connectDB();
         const body = await req.json();
 
-        const doc = await TermsPolicyModel.findOne();
+        const doc = await prisma.termsPolicy.findFirst();
         if (!doc) {
             return NextResponse.json(
                 { success: false, message: "Terms & Policy not found. Use POST to create it first." },
@@ -111,30 +115,32 @@ export async function PATCH(req: NextRequest) {
             );
         }
 
-        if (body.metaTitle !== undefined) doc.metaTitle = body.metaTitle;
-        if (body.metaDescription !== undefined) doc.metaDescription = body.metaDescription;
-        if (body.title !== undefined) doc.title = body.title;
-        if (body.subTitle !== undefined) doc.subTitle = body.subTitle;
+        const data: Prisma.TermsPolicyUpdateInput = {};
+        if (body.metaTitle !== undefined) data.metaTitle = body.metaTitle;
+        if (body.metaDescription !== undefined) data.metaDescription = body.metaDescription;
+        if (body.title !== undefined) data.title = body.title;
+        if (body.subTitle !== undefined) data.subTitle = body.subTitle;
         if (body.content !== undefined) {
-            doc.content = body.content;
-            doc.markModified("content");
+            data.content = jsonValue(body.content);
         }
         if (body.privacyPolicyContent !== undefined) {
-            doc.privacyPolicyContent = body.privacyPolicyContent;
-            doc.markModified("privacyPolicyContent");
+            data.privacyPolicyContent = jsonValue(body.privacyPolicyContent);
         }
 
-        await doc.save();
+        const updated = await prisma.termsPolicy.update({
+            where: { id: doc.id },
+            data,
+        });
 
         return NextResponse.json({
             success: true,
             data: {
-                metaTitle: doc.metaTitle,
-                metaDescription: doc.metaDescription,
-                title: doc.title,
-                subTitle: doc.subTitle,
-                content: doc.content,
-                privacyPolicyContent: doc.privacyPolicyContent,
+                metaTitle: updated.metaTitle,
+                metaDescription: updated.metaDescription,
+                title: updated.title,
+                subTitle: updated.subTitle,
+                content: updated.content,
+                privacyPolicyContent: updated.privacyPolicyContent,
             },
         });
     } catch (error) {

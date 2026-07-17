@@ -1,12 +1,9 @@
-import { connectDB } from "@/app/lib/config/db";
-import OTP from "@/app/lib/models/otp";
+import prisma from "@/app/lib/config/db";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 
 export async function POST(req: NextRequest) {
     try {
-        await connectDB();
-
         const { email, otp } = await req.json();
 
         // Validation
@@ -33,11 +30,13 @@ export async function POST(req: NextRequest) {
 
 
         // find valid otp
-        const otpRecord = await OTP.findOne({
-            email: email.toLowerCase(),
-            otp,
-            verified: false,
-            expiresAt: { $gt: new Date() }
+        const otpRecord = await prisma.otp.findFirst({
+            where: {
+                email: email.toLowerCase(),
+                otp,
+                verified: false,
+                expiresAt: { gt: new Date() },
+            },
         })
 
         if (!otpRecord) {
@@ -51,13 +50,15 @@ export async function POST(req: NextRequest) {
         }
 
         // mark otp as verified
-        otpRecord.verified = true;
-        await otpRecord.save();
+        await prisma.otp.update({
+            where: { id: otpRecord.id },
+            data: { verified: true },
+        });
 
         // Generate reset token (valid for 15 minutes)
         const resetToken = jwt.sign({
             email: email.toLowerCase(),
-            otpId: otpRecord._id.toString(),
+            otpId: otpRecord.id,
             type: "password_reset",
         },
             process.env.JWT_SECRET!,

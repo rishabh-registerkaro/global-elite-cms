@@ -4,8 +4,9 @@ FROM node:20-alpine
 # Create app directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and Prisma schema (postinstall runs `prisma generate`)
 COPY package*.json ./
+COPY prisma ./prisma
 
 # Install dependencies
 RUN npm install

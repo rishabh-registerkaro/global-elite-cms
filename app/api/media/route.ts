@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
-import { connectDB } from "@/app/lib/config/db";
-import MediaAsset from "@/app/lib/models/mediaAsset";
+import prisma from "@/app/lib/config/db";
 import * as ftp from "basic-ftp";
 import { Readable } from "stream";
 
@@ -86,14 +85,15 @@ export async function POST(req: NextRequest) {
     const format = file.name.split(".").pop()?.toLowerCase() || "bin";
     const resourceType = file.type.startsWith("image/") ? "image" : "raw";
 
-    await connectDB();
-    await MediaAsset.create({
-      key: safeFilename,
-      filename: file.name,
-      format,
-      resource_type: resourceType,
-      bytes: file.size,
-      url,
+    await prisma.mediaAsset.create({
+      data: {
+        key: safeFilename,
+        filename: file.name,
+        format,
+        resourceType,
+        bytes: file.size,
+        url,
+      },
     });
 
     return NextResponse.json(
@@ -114,11 +114,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Unauthorized. Please login." }, { status: 401 });
     }
 
-    await connectDB();
-    const docs = await MediaAsset.find().sort({ createdAt: -1 }).limit(200).lean();
+    const docs = await prisma.mediaAsset.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
 
-    const resources = docs.map((doc: any) => ({
-      asset_id: doc._id.toString(),
+    const resources = docs.map((doc) => ({
+      asset_id: doc.id,
       public_id: doc.key,
       filename: doc.filename,
       format: doc.format,
@@ -127,7 +129,7 @@ export async function GET(req: NextRequest) {
       width: 0,
       height: 0,
       created_at: doc.createdAt,
-      resource_type: doc.resource_type,
+      resource_type: doc.resourceType,
     }));
 
     return NextResponse.json({ message: "Fetched media", result: { resources } }, { status: 200 });
@@ -157,8 +159,7 @@ export async function DELETE(req: NextRequest) {
       // file may already be missing on Hostinger — still clean up DB record
     }
 
-    await connectDB();
-    await MediaAsset.deleteOne({ key: public_id });
+    await prisma.mediaAsset.deleteMany({ where: { key: public_id } });
 
     return NextResponse.json({ result: { deleted: true } }, { status: 200 });
   } catch (error: any) {

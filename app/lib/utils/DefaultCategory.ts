@@ -1,28 +1,28 @@
-import { connectDB } from "@/app/lib/config/db";
-import Category from "@/app/lib/models/category";
-import mongoose from "mongoose";
+import prisma from "@/app/lib/config/db";
 
 const OTHERS_CATEGORY_SLUG = "others";
 
 /**
  * Ensures the "Others" default category exists in the database
  * This category cannot be a parent or child category
- * @returns The ObjectId of the "Others" category
+ * @returns The id of the "Others" category
  */
-export async function ensureDefaultCategory(): Promise<mongoose.Types.ObjectId> {
-  await connectDB();
-  
+export async function ensureDefaultCategory(): Promise<string> {
   // Try to find existing "Others" category
-  let othersCategory = await Category.findOne({ slug: OTHERS_CATEGORY_SLUG });
-  
+  let othersCategory = await prisma.category.findUnique({
+    where: { slug: OTHERS_CATEGORY_SLUG },
+  });
+
   if (!othersCategory) {
     // Create "Others" category if it doesn't exist
-    othersCategory = await Category.create({
-      name: "Others",
-      slug: OTHERS_CATEGORY_SLUG,
-      parentCategory: null, // Cannot be a child
+    othersCategory = await prisma.category.create({
+      data: {
+        name: "Others",
+        slug: OTHERS_CATEGORY_SLUG,
+        parentId: null, // Cannot be a child
+      },
     });
   }
-  
-  return othersCategory._id;
+
+  return othersCategory.id;
 }

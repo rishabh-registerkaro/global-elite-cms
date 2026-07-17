@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { connectDB } from "@/app/lib/config/db"
-import User from "@/app/lib/models/user"
-import Post from "@/app/lib/models/post"
-import ServicePageModel from "@/app/lib/models/service"
+import prisma from "@/app/lib/config/db"
 import jwt from "jsonwebtoken"
-import mongoose from "mongoose"
 
 export async function GET(req: NextRequest) {
     try {
@@ -21,9 +17,10 @@ export async function GET(req: NextRequest) {
             role: string;
         }
 
-        await connectDB();
-
-        const user = await User.findById(decoded.id).select('_id username email role createdAt updatedAt');
+        const user = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { id: true, username: true, email: true, role: true, createdAt: true, updatedAt: true },
+        });
         if (!user) {
             return NextResponse.json({
                 success: false,
@@ -33,7 +30,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             success: true,
             user: {
-                id: user._id.toString(),
+                id: user.id,
                 email: user.email,
                 username: user.username,
                 role: user.role,
@@ -85,10 +82,11 @@ export async function POST(req: NextRequest) {
             throw error;
         }
 
-        await connectDB();
-
         // Verify user exists
-        const currentUser = await User.findById(decoded.id);
+        const currentUser = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { id: true },
+        });
         if (!currentUser) {
             return NextResponse.json({
                 success: false,
@@ -106,7 +104,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Validate userId format
-        if (!mongoose.Types.ObjectId.isValid(userId)) {
+        if (!(typeof userId === "string" && userId.length > 0)) {
             return NextResponse.json({
                 success: false,
                 message: "Invalid userId format"
@@ -127,27 +125,26 @@ export async function POST(req: NextRequest) {
         const pagesLimit = Math.min(maxLimit, Math.max(1, parseInt(pagesLimitParam || limitParam || String(defaultLimit), 10)));
         const pagesSkip = (pagesPage - 1) * pagesLimit;
 
-        await connectDB();
-
-        // Convert userId to ObjectId
-        const userObjectId = new mongoose.Types.ObjectId(userId);
-
         // Run posts and services queries in parallel
         const [totalPostsCount, publishedPosts, totalServicesCount, services] = await Promise.all([
-            Post.countDocuments({ author: userObjectId, status: { $in: ['published', 'draft'] } }),
-            Post.find({ author: userObjectId, status: 'published' })
-                .select('_id title slug status publishedAt createdAt updatedAt')
-                .sort({ publishedAt: -1, createdAt: -1 })
-                .skip(postsSkip)
-                .limit(postsLimit)
-                .lean(),
-            ServicePageModel.countDocuments({ author: userObjectId }),
-            ServicePageModel.find({ author: userObjectId })
-                .select('_id slug status heroSection createdAt updatedAt')
-                .sort({ updatedAt: -1 })
-                .skip(pagesSkip)
-                .limit(pagesLimit)
-                .lean(),
+            prisma.post.count({
+                where: { authorId: userId, status: { in: ["published", "draft"] } },
+            }),
+            prisma.post.findMany({
+                where: { authorId: userId, status: "published" },
+                select: { id: true, title: true, slug: true, status: true, publishedAt: true, createdAt: true, updatedAt: true },
+                orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+                skip: postsSkip,
+                take: postsLimit,
+            }),
+            prisma.servicePage.count({ where: { authorId: userId } }),
+            prisma.servicePage.findMany({
+                where: { authorId: userId },
+                select: { id: true, slug: true, status: true, content: true, createdAt: true, updatedAt: true },
+                orderBy: { updatedAt: "desc" },
+                skip: pagesSkip,
+                take: pagesLimit,
+            }),
         ]);
 
         const totalPostsPages = Math.ceil(totalPostsCount / postsLimit);
@@ -157,7 +154,7 @@ export async function POST(req: NextRequest) {
             success: true,
             data: {
                 posts: publishedPosts.map(post => ({
-                    _id: post._id.toString(),
+                    _id: post.id,
                     title: post.title,
                     slug: post.slug,
                     status: post.status,
@@ -166,8 +163,8 @@ export async function POST(req: NextRequest) {
                     updatedAt: post.updatedAt,
                 })),
                 pages: services.map((svc: any) => ({
-                    _id: svc._id.toString(),
-                    pageTitle: svc.heroSection?.title || svc.slug,
+                    _id: svc.id,
+                    pageTitle: svc.content?.badge || svc.slug,
                     pageSlug: svc.slug,
                     status: svc.status,
                     createdAt: svc.createdAt,
@@ -258,10 +255,11 @@ export async function PUT(req: NextRequest) {
             }, { status: 400 });
         }
 
-        await connectDB();
-
         // Get current user
-        const currentUser = await User.findById(decoded.id);
+        const currentUser = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: { id: true, email: true, username: true, createdAt: true, updatedAt: true },
+        });
         if (!currentUser) {
             return NextResponse.json({
                 success: false,
@@ -271,9 +269,12 @@ export async function PUT(req: NextRequest) {
 
         // Check if email is being changed and validate uniqueness
         if (email.toLowerCase() !== currentUser.email.toLowerCase()) {
-            const emailExists = await User.findOne({
-                email: email.toLowerCase().trim(),
-                _id: { $ne: decoded.id }
+            const emailExists = await prisma.user.findFirst({
+                where: {
+                    email: email.toLowerCase().trim(),
+                    id: { not: decoded.id },
+                },
+                select: { id: true },
             });
 
             if (emailExists) {
@@ -286,9 +287,12 @@ export async function PUT(req: NextRequest) {
 
         // Check if username is being changed and validate uniqueness
         if (username.trim() !== currentUser.username.trim()) {
-            const usernameExists = await User.findOne({
-                username: username.trim(),
-                _id: { $ne: decoded.id }
+            const usernameExists = await prisma.user.findFirst({
+                where: {
+                    username: username.trim(),
+                    id: { not: decoded.id },
+                },
+                select: { id: true },
             });
 
             if (usernameExists) {
@@ -300,27 +304,33 @@ export async function PUT(req: NextRequest) {
         }
 
         // Update user (only email and username)
-        currentUser.email = email.toLowerCase().trim();
-        currentUser.username = username.trim();
-        await currentUser.save();
+        const updatedUser = await prisma.user.update({
+            where: { id: decoded.id },
+            data: {
+                email: email.toLowerCase().trim(),
+                username: username.trim(),
+            },
+            select: { id: true, email: true, username: true, createdAt: true, updatedAt: true },
+        });
 
         return NextResponse.json({
             success: true,
             message: "Profile updated successfully",
             user: {
-                id: currentUser._id.toString(),
-                email: currentUser.email,
-                username: currentUser.username,
-                createdAt: currentUser.createdAt,
-                updatedAt: currentUser.updatedAt,
+                id: updatedUser.id,
+                email: updatedUser.email,
+                username: updatedUser.username,
+                createdAt: updatedUser.createdAt,
+                updatedAt: updatedUser.updatedAt,
             }
         });
     } catch (error: any) {
         console.error("Update profile error:", error);
-        
-        // Handle MongoDB duplicate key error
-        if (error.code === 11000) {
-            const field = Object.keys(error.keyPattern)[0];
+
+        // Handle duplicate key error (Prisma unique constraint violation)
+        if (error.code === "P2002") {
+            const target = String(error.meta?.target ?? "");
+            const field = target.includes("email") ? "email" : "username";
             return NextResponse.json({
                 success: false,
                 message: `${field === 'email' ? 'Email' : 'Username'} already exists. Please use a different ${field}.`
