@@ -290,16 +290,15 @@ model ServicePage {
 }
 
 model AboutPage {
-  id                  String   @id @default(cuid())
-  metaTitle           String?
-  metaDescription     String?  @db.Text
-  heroSection         Json?
-  aboutSection        Json?
-  approachSection     Json?
-  teamSection         Json?
-  foundersNoteSection Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id              String   @id @default(cuid())
+  metaTitle       String?
+  metaDescription String?  @db.Text
+  // Entire page as one flexible document (hero, metrics, pillars,
+  // accreditations, story, team, founder).
+  // Shape: app/lib/content/about-content.ts → AboutPageContent
+  content         Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@map("about_pages")
 }
