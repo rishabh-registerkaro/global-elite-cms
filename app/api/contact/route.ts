@@ -2,6 +2,7 @@ import prisma from "@/app/lib/config/db";
 import { withMongoId } from "@/app/lib/utils/serialize";
 import { requireRole } from "@/app/lib/utils/authorization";
 import { CONTENT_ROLES } from "@/app/lib/constants/role";
+import { revalidateFrontendTags } from "@/app/lib/utils/revalidateFrontend";
 import { NextResponse, NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 
@@ -81,6 +82,8 @@ export async function POST(req: NextRequest) {
             },
         });
 
+        await revalidateFrontendTags(["contact-page"]);
+
         return NextResponse.json({ success: true, data: withMongoId(doc) }, { status: 201 });
     } catch (error) {
         console.error("POST /api/contact error:", error);
@@ -116,6 +119,8 @@ export async function PATCH(req: NextRequest) {
             where: { id: doc.id },
             data,
         });
+
+        await revalidateFrontendTags(["contact-page"]);
 
         return NextResponse.json({ success: true, data: { metaTitle: updated.metaTitle, metaDescription: updated.metaDescription, content: updated.content } });
     } catch (error) {
