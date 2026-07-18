@@ -15,6 +15,14 @@ export default function MediaLibrary() {
   const [loading, setLoading] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
 
   function getAssetType(format: string) {
     const f = format?.toLowerCase();
@@ -34,12 +42,13 @@ export default function MediaLibrary() {
 
     return "other";
   }
-  const loadAssets = async () => {
+  const loadAssets = async (targetPage: number = page) => {
     try {
       setLoading(true);
-      const res = await fetch("/api/media");
+      const res = await fetch(`/api/media?page=${targetPage}&limit=24`);
       const data = await res.json();
       setAssets(data?.result?.resources || []);
+      if (data?.result?.pagination) setPagination(data.result.pagination);
     } catch (err) {
       toast.error("Failed to load media");
     } finally {
@@ -56,7 +65,9 @@ export default function MediaLibrary() {
     try {
       await uploadFileToMedia(file);
       toast.success("Upload successful!", { id: toastId });
-      loadAssets();
+      // New uploads sort first — jump to page 1
+      setPage(1);
+      loadAssets(1);
     } catch (err: any) {
       toast.error(err.message || "Upload failed", { id: toastId });
     }
@@ -69,7 +80,7 @@ export default function MediaLibrary() {
       await deleteFileFromMedia(publicId, resource_type);
       toast.success("File deleted", { id: toastId });
       setIsModalOpen(false);
-      loadAssets();
+      loadAssets(page);
     } catch (err) {
       toast.error("Failed to delete file", { id: toastId });
     }
@@ -129,8 +140,9 @@ export default function MediaLibrary() {
   };
 
   useEffect(() => {
-    loadAssets();
-  }, []);
+    loadAssets(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
 
 
@@ -212,6 +224,34 @@ export default function MediaLibrary() {
               );
             })}
         </div>
+
+        {/* PAGINATION */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <span className="text-sm text-slate-400">
+              Page {pagination.currentPage} of {pagination.totalPages} •{" "}
+              {pagination.totalCount} files
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!pagination.hasPrevPage || loading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-4 py-2 rounded-md bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage || loading}
+                onClick={() => setPage((p) => p + 1)}
+                className="px-4 py-2 rounded-md bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* MODAL */}
         {isModalOpen && selectedAsset && (

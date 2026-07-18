@@ -114,10 +114,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Unauthorized. Please login." }, { status: 401 });
     }
 
-    const docs = await prisma.mediaAsset.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    });
+    // Paginated chunks — no more hard cap hiding assets beyond the first 200
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "24")));
+    const skip = (page - 1) * limit;
+
+    const [total, docs] = await Promise.all([
+      prisma.mediaAsset.count(),
+      prisma.mediaAsset.findMany({
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
 
     const resources = docs.map((doc) => ({
       asset_id: doc.id,
@@ -132,7 +142,25 @@ export async function GET(req: NextRequest) {
       resource_type: doc.resourceType,
     }));
 
-    return NextResponse.json({ message: "Fetched media", result: { resources } }, { status: 200 });
+    const totalPages = Math.ceil(total / limit);
+
+    return NextResponse.json(
+      {
+        message: "Fetched media",
+        result: {
+          resources,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalCount: total,
+            limit,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+          },
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Media fetch error:", error);
     return NextResponse.json({ message: "Error fetching media", error: String(error) }, { status: 500 });

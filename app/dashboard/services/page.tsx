@@ -24,44 +24,55 @@ interface Service {
   slug: string;
   metaTitle?: string;
   template?: string;
-  content?: {
-    badge?: string;
-    titleLead?: string;
-    titleAccent?: string;
-  };
+  /** Derived server-side from the page content — the list never carries the full JSON */
+  title?: string;
   author: Author;
   status: "draft" | "published";
   createdAt?: string;
   updatedAt?: string;
 }
 
-const serviceTitle = (service: Service) => {
-  const heroTitle = [service.content?.titleLead, service.content?.titleAccent]
-    .filter(Boolean)
-    .join(" ");
-  return heroTitle || service.content?.badge || service.metaTitle || "";
-};
+interface PaginationInfo {
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+const serviceTitle = (service: Service) => service.title || service.metaTitle || "";
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    limit: 10,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
 
   useEffect(() => {
-    fetchServices();
+    fetchServices(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchServices = async () => {
+  const fetchServices = async (page: number = 1) => {
     try {
       setLoading(true);
-      const res = await fetch("/api/services", {
+      const res = await fetch(`/api/services?page=${page}&limit=10`, {
         credentials: "include",
       });
 
       if (res.ok) {
         const data = await res.json();
         setServices(data.servicePages || []);
+        if (data.pagination) setPagination(data.pagination);
       } else {
         toast.error("Failed to fetch services", { closeButton: true });
       }
@@ -106,7 +117,7 @@ export default function ServicesPage() {
                 duration: 3000,
                 className: "!bg-transparent !text-white !border-gray-200",
               });
-              fetchServices();
+              fetchServices(pagination.currentPage);
             } else {
               toast.error(data.message || "Failed to delete service", {
                 duration: 3000,
@@ -310,6 +321,36 @@ export default function ServicesPage() {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700">
+              <span className="text-sm text-slate-400">
+                Page {pagination.currentPage} of {pagination.totalPages} •{" "}
+                {pagination.totalCount} services
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.hasPrevPage || loading}
+                  onClick={() => fetchServices(pagination.currentPage - 1)}
+                  className="border-slate-600 bg-slate-800/60 text-slate-200 hover:bg-slate-700 hover:text-white disabled:opacity-40"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.hasNextPage || loading}
+                  onClick={() => fetchServices(pagination.currentPage + 1)}
+                  className="border-slate-600 bg-slate-800/60 text-slate-200 hover:bg-slate-700 hover:text-white disabled:opacity-40"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
