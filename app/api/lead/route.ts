@@ -1,5 +1,6 @@
 import prisma from "@/app/lib/config/db";
 import { Prisma } from "@prisma/client";
+import { sendLeadNotification } from "@/app/lib/config/email";
 import { withMongoId } from "@/app/lib/utils/serialize";
 import { getCorsHeaders } from "@/app/lib/utils/corsHeader";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,41 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 // POST - Create Lead (Step 1)
+// ── Validation (mirrors the frontend rules in Global-Elite/app/lib/leads.ts) ──
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Returns an error message, or null when the common fields are valid. */
+function validateLead(name: unknown, email: unknown, phone: unknown): string | null {
+  if (typeof name !== "string" || name.trim().length < 2) {
+    return "Please enter your full name (at least 2 characters).";
+  }
+  if (name.trim().length > 100) return "Name is too long (max 100 characters).";
+
+  if (typeof email !== "string" || !EMAIL_RE.test(email.trim()) || email.trim().length > 254) {
+    return "Please enter a valid email address.";
+  }
+
+  if (typeof phone !== "string") return "Please enter your phone number.";
+  const digits = phone.replace(/[\s\-().]/g, "").replace(/^\+/, "");
+  if (!/^\d{7,15}$/.test(digits)) {
+    return "Please enter a valid phone number (7–15 digits).";
+  }
+  return null;
+}
+
+/** Trim values, drop empties, and cap sizes so only real data reaches the DB. */
+function sanitizeFormData(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const clean: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 20)) {
+    const k = String(key).trim().slice(0, 100);
+    const v = String(value ?? "").trim().slice(0, 2000);
+    if (k && v) clean[k] = v;
+  }
+  return Object.keys(clean).length > 0 ? clean : undefined;
+}
+
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req);
   try {
@@ -18,12 +54,10 @@ export async function POST(req: NextRequest) {
 
     // Common fields shared by every website form; everything form-specific
     // arrives in body.formData as {"Field Label": value} pairs.
-    if (!body.name || !body.email || !body.phoneNo) {
+    const validationError = validateLead(body.name, body.email, body.phoneNo);
+    if (validationError) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Name, Email and Phone Number are required",
-        },
+        { success: false, message: validationError },
         { status: 400, headers: corsHeaders }
       );
     }
@@ -39,14 +73,30 @@ export async function POST(req: NextRequest) {
     // different page (or twice) must never overwrite an earlier lead.
     const lead = await prisma.lead.create({
       data: {
-        name: body.name,
-        email: body.email,
-        phoneNo: body.phoneNo,
-        leadSource: body.leadSource || "Website",
-        formData: (body.formData ?? undefined) as Prisma.InputJsonValue | undefined,
+        name: String(body.name).trim(),
+        email: String(body.email).trim().toLowerCase(),
+        phoneNo: String(body.phoneNo).trim(),
+        leadSource: (typeof body.leadSource === "string" && body.leadSource.trim()
+          ? body.leadSource.trim().slice(0, 200)
+          : "Website"),
+        formData: sanitizeFormData(body.formData) as Prisma.InputJsonValue | undefined,
         status: "new",
       },
     });
+
+    // Notify the admin. Awaited (with a cap) so serverless hosts don't cut it
+    // off mid-send, but a slow/failed email never delays or fails the visitor.
+    await Promise.race([
+      sendLeadNotification({
+        name: lead.name,
+        email: lead.email,
+        phoneNo: lead.phoneNo,
+        leadSource: lead.leadSource,
+        formData: lead.formData as Record<string, string> | null,
+        createdAt: lead.createdAt,
+      }),
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
 
     return NextResponse.json(
       {
