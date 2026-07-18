@@ -3,11 +3,10 @@ export interface Lead {
   name: string;
   email: string;
   phoneNo: string;
-  companyName?: string;
-  serviceSelected?: string;
-  message?: string;
   status: "new" | "contacted" | "converted" | "lost";
   leadSource: string;
+  /** Form-specific fields as {"Field Label": value} pairs */
+  formData?: Record<string, string> | null;
   createdAt: string;
   updatedAt: string;
 }

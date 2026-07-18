@@ -139,10 +139,11 @@ export default function LeadsPage() {
           lead.name.toLowerCase().includes(searchLower) ||
           lead.email.toLowerCase().includes(searchLower) ||
           lead.phoneNo.toLowerCase().includes(searchLower) ||
-          (lead.companyName &&
-            lead.companyName.toLowerCase().includes(searchLower)) ||
-          (lead.serviceSelected &&
-            lead.serviceSelected.toLowerCase().includes(searchLower))
+          (lead.leadSource &&
+            lead.leadSource.toLowerCase().includes(searchLower)) ||
+          Object.values(lead.formData ?? {}).some((v) =>
+            String(v).toLowerCase().includes(searchLower)
+          )
       );
     }
 
@@ -426,7 +427,7 @@ export default function LeadsPage() {
                       {lead.phoneNo}
                     </TableCell>
                     <TableCell className="text-slate-300">
-                      {lead.serviceSelected || "-"}
+                      {Object.values(lead.formData ?? {})[0] || "-"}
                     </TableCell>
                     <TableCell>
                       <span
