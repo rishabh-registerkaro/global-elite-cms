@@ -17,37 +17,94 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Fetch all categories
-    const categories = await prisma.category.findMany({
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        color: true,
-        createdAt: true,
-        updatedAt: true,
-        parentId: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Two modes:
+    //  • no `page` param → ALL categories (back-compat: blog editor pickers,
+    //    parent-category dropdowns)
+    //  • `?page=N` → paginated chunk (skip/take) with parent names resolved,
+    //    used by the Categories listing table
+    const { searchParams } = new URL(req.url);
+    const pageParam = searchParams.get("page");
 
-    // Format the response
-    const formattedCategories = categories.map((category) => ({
+    const select = {
+      id: true,
+      name: true,
+      slug: true,
+      color: true,
+      createdAt: true,
+      updatedAt: true,
+      parentId: true,
+      parent: { select: { name: true } },
+    } as const;
+
+    type Row = {
+      id: string;
+      name: string;
+      slug: string;
+      color: string;
+      createdAt: Date;
+      updatedAt: Date;
+      parentId: string | null;
+      parent: { name: string } | null;
+    };
+
+    const format = (category: Row) => ({
       _id: category.id,
       name: category.name,
       slug: category.slug,
       color: category.color || "",
       parentCategory: category.parentId ? category.parentId : null,
+      parentName: category.parent?.name ?? null,
       createdAt: category.createdAt,
       updatedAt: category.updatedAt,
-    }));
+    });
+
+    if (pageParam === null) {
+      const categories = await prisma.category.findMany({
+        select,
+        orderBy: { createdAt: "desc" },
+      });
+      const formattedCategories = categories.map(format);
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Categories fetched successfully",
+          categories: formattedCategories,
+          count: formattedCategories.length,
+        },
+        { status: 200 }
+      );
+    }
+
+    const page = Math.max(1, parseInt(pageParam) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "20")));
+    const skip = (page - 1) * limit;
+
+    const [total, categories] = await Promise.all([
+      prisma.category.count(),
+      prisma.category.findMany({
+        select,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json(
       {
         success: true,
         message: "Categories fetched successfully",
-        categories: formattedCategories,
-        count: formattedCategories.length,
+        categories: categories.map(format),
+        count: total,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalCount: total,
+          limit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
       },
       { status: 200 }
     );

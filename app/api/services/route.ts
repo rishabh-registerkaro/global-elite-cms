@@ -93,17 +93,60 @@ export async function GET(req:NextRequest) {
         { status: 401}
       );
     }
-    const rows = await prisma.servicePage.findMany({
-      include: { author: { select: { id: true, username: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    // Paginated, and the list only carries what the table shows — the heavy
+    // content JSON stays out of the response (title is derived from it here).
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "10")));
+    const skip = (page - 1) * limit;
+
+    const [total, rows] = await Promise.all([
+      prisma.servicePage.count(),
+      prisma.servicePage.findMany({
+        select: {
+          id: true,
+          slug: true,
+          template: true,
+          metaTitle: true,
+          status: true,
+          content: true,
+          createdAt: true,
+          updatedAt: true,
+          author: { select: { id: true, username: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
 
     const servicePages = withMongoIds(
-      rows.map(({ authorId, ...rest }) => rest)
+      rows.map(({ content, ...rest }) => {
+        const c = content as { titleLead?: string; titleAccent?: string; badge?: string } | null;
+        const title =
+          [c?.titleLead, c?.titleAccent].filter(Boolean).join(" ") ||
+          c?.badge ||
+          rest.metaTitle ||
+          "";
+        return { ...rest, title };
+      })
     );
 
+    const totalPages = Math.ceil(total / limit);
+
     return NextResponse.json(
-      { message: " Service Pages Fetched Successfully", servicePages },
+      {
+        message: " Service Pages Fetched Successfully",
+        servicePages,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalCount: total,
+          limit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
       { status: 200 }
     );
   } catch (error) {

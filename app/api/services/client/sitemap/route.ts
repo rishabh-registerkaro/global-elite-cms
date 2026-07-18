@@ -18,7 +18,10 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
     try {
+        // Sitemap is public — only published pages may appear here.
+        // (The dashboard listing uses /api/services and still shows drafts.)
         const services = await prisma.servicePage.findMany({
+            where: { status: "published" },
             select: { id: true, slug: true, updatedAt: true },
             orderBy: { updatedAt: "desc" },
         });

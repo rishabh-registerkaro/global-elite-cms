@@ -55,22 +55,35 @@ export default function CategoryPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  // Full list only for the parent-category dropdown (small payload: names/ids)
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
 
-  // Fetch categories on mount
+  // Fetch the paginated table chunk whenever the page changes
   useEffect(() => {
-    fetchCategories();
+    fetchCategories(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
+  // Fetch the full list once for the parent dropdown
+  useEffect(() => {
+    fetchAllCategories();
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchCategories = async (page: number = 1) => {
     try {
       setCategoriesLoading(true);
-      const res = await fetch("/api/post/category/get-all-categories", {
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/post/category/get-all-categories?page=${page}&limit=${itemsPerPage}`,
+        { credentials: "include" }
+      );
 
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories || []);
+        setServerTotalPages(data.pagination?.totalPages ?? 1);
+        setTotalCount(data.pagination?.totalCount ?? (data.categories?.length || 0));
       } else {
         console.error("Failed to fetch categories");
       }
@@ -78,6 +91,20 @@ export default function CategoryPage() {
       console.error("Error fetching categories:", error);
     } finally {
       setCategoriesLoading(false);
+    }
+  };
+
+  const fetchAllCategories = async () => {
+    try {
+      const res = await fetch("/api/post/category/get-all-categories", {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAllCategories(data.categories || []);
+      }
+    } catch (error) {
+      console.error("Error fetching all categories:", error);
     }
   };
 
@@ -131,7 +158,10 @@ export default function CategoryPage() {
       if (data.success) {
         toast.success("Category created successfully!", toastConfig);
         setFormData({ name: "", slug: "", color: "", parentCategory: "", description: "" });
-        fetchCategories();
+        // New categories sort first — jump back to page 1 and refresh the dropdown
+        setCurrentPage(1);
+        fetchCategories(1);
+        fetchAllCategories();
       } else {
         toast.error(data.message || "Failed to create category", toastConfig);
       }
@@ -165,7 +195,8 @@ export default function CategoryPage() {
 
             if (data.success) {
               toast.success("Category deleted successfully!", toastConfig);
-              fetchCategories(); // Refresh list
+              fetchCategories(currentPage); // Refresh current chunk
+              fetchAllCategories();
             } else {
               toast.error(data.message || "Failed to delete category", toastConfig);
             }
@@ -194,7 +225,7 @@ export default function CategoryPage() {
 
   const handleSelectAll = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedCategories(filteredCategories.map((cat) => cat._id));
+      setSelectedCategories(paginatedCategories.map((cat) => cat._id));
     } else {
       setSelectedCategories([]);
     }
@@ -206,11 +237,11 @@ export default function CategoryPage() {
     );
   };
 
-  // Get top-level categories (for parent dropdown)
-  const topLevelCategories = categories.filter((cat) => !cat.parentCategory);
+  // Get top-level categories (for parent dropdown) — from the full list
+  const topLevelCategories = allCategories.filter((cat) => !cat.parentCategory);
 
-  // Filter categories based on search
-  const filteredCategories = searchTerm
+  // Search filters within the current server page
+  const paginatedCategories = searchTerm
     ? categories.filter(
       (cat) =>
         cat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -218,15 +249,12 @@ export default function CategoryPage() {
     )
     : categories;
 
-  // Pagination
-  const totalPages = Math.ceil(filteredCategories.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedCategories = filteredCategories.slice(startIndex, startIndex + itemsPerPage);
+  const totalPages = serverTotalPages;
 
-  // Get category name by ID
+  // Parent name comes from the API row; fall back to the full list
   const getCategoryName = (categoryId: string | null) => {
     if (!categoryId) return "None";
-    const category = categories.find((cat) => cat._id === categoryId);
+    const category = allCategories.find((cat) => cat._id === categoryId);
     return category?.name || "Unknown";
   };
 
@@ -510,7 +538,7 @@ export default function CategoryPage() {
               {/* Pagination */}
               <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
                 <span>
-                  {filteredCategories.length} {filteredCategories.length === 1 ? "item" : "items"}
+                  {totalCount} {totalCount === 1 ? "item" : "items"}
                 </span>
                 <div className="flex gap-2 items-center">
                   <span>
