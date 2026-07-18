@@ -74,25 +74,9 @@ export async function PUT(
       "name",
       "email",
       "phoneNo",
-      "companyName",
-      "region",
-      "serviceSelected",
-      "message",
       "status",
       "leadSource",
-      "hasPayment",
-      "packageId",
-      "packageName",
-      "razorpayOrderId",
-      "razorpayPaymentId",
-      "razorpaySignature",
-      "paymentStatus",
-      "amount",
-      "currency",
-      "paymentMethod",
-      "paidAt",
-      "adminNotes",
-      "lastContactedAt",
+      "formData",
     ] as const;
 
     const data: Record<string, any> = {};
@@ -101,8 +85,6 @@ export async function PUT(
         data[field] = body[field];
       }
     }
-    if (data.paidAt) data.paidAt = new Date(data.paidAt);
-    if (data.lastContactedAt) data.lastContactedAt = new Date(data.lastContactedAt);
 
     const existingLead = await prisma.lead.findUnique({ where: { id } });
 

@@ -1,4 +1,5 @@
 import prisma from "@/app/lib/config/db";
+import { Prisma } from "@prisma/client";
 import { withMongoId } from "@/app/lib/utils/serialize";
 import { getCorsHeaders } from "@/app/lib/utils/corsHeader";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,65 +16,37 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Validate required fields
-    if (!body.name || !body.email || !body.phoneNo || !body.region || !body.serviceSelected) {
+    // Common fields shared by every website form; everything form-specific
+    // arrives in body.formData as {"Field Label": value} pairs.
+    if (!body.name || !body.email || !body.phoneNo) {
       return NextResponse.json(
         {
           success: false,
-          message: "Name, Email, Phone Number, Region, and Service Selected are required",
+          message: "Name, Email and Phone Number are required",
         },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // Check if packageId is provided - if yes, redirect to payment flow
-    if (body.packageId) {
+    if (body.formData !== undefined && (body.formData === null || typeof body.formData !== "object")) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "For package purchases, please use /api/razorpay/create-order endpoint",
-        },
+        { success: false, message: "formData must be an object" },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // Check if lead already exists
-    let lead = await prisma.lead.findFirst({ where: { email: body.email } });
-
-    if (lead) {
-      // Update existing lead only if no payment exists
-      if (!lead.hasPayment) {
-        lead = await prisma.lead.update({
-          where: { id: lead.id },
-          data: {
-            name: body.name,
-            phoneNo: body.phoneNo,
-            companyName: body.companyName,
-            region: body.region,
-            serviceSelected: body.serviceSelected,
-            message: body.message,
-            hasPayment: false,
-            status: "new",
-          },
-        });
-      }
-    } else {
-      // Create new lead
-      lead = await prisma.lead.create({
-        data: {
-          name: body.name,
-          email: body.email,
-          phoneNo: body.phoneNo,
-          companyName: body.companyName,
-          region: body.region,
-          serviceSelected: body.serviceSelected,
-          message: body.message,
-          hasPayment: false,
-          status: "new",
-          leadSource: "Website",
-        },
-      });
-    }
+    // Every submission is its own lead — the same person submitting from a
+    // different page (or twice) must never overwrite an earlier lead.
+    const lead = await prisma.lead.create({
+      data: {
+        name: body.name,
+        email: body.email,
+        phoneNo: body.phoneNo,
+        leadSource: body.leadSource || "Website",
+        formData: (body.formData ?? undefined) as Prisma.InputJsonValue | undefined,
+        status: "new",
+      },
+    });
 
     return NextResponse.json(
       {
@@ -127,32 +100,15 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "10");
     const skip = (page - 1) * limit;
 
-    // Filter parameters
+    // Filter parameters — an invalid status value would make Prisma throw on
+    // the enum, so treat it as matching nothing instead.
     const status = searchParams.get("status");
-    const paymentStatus = searchParams.get("paymentStatus");
-    const region = searchParams.get("region");
-    const hasPayment = searchParams.get("hasPayment");
-
-    // Invalid enum values would make Prisma throw — Mongoose simply matched
-    // nothing, so mimic that with an impossible filter.
     const LEAD_STATUSES = ["new", "contacted", "converted", "lost"];
-    const PAYMENT_STATUSES = ["pending", "success", "failed"];
-    const noMatch =
-      (status !== null && !LEAD_STATUSES.includes(status)) ||
-      (paymentStatus !== null && !PAYMENT_STATUSES.includes(paymentStatus));
+    const noMatch = status !== null && !LEAD_STATUSES.includes(status);
 
     const query: any = {};
     if (status) {
       query.status = status;
-    }
-    if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
-    }
-    if (region) {
-      query.region = region;
-    }
-    if (hasPayment !== null) {
-      query.hasPayment = hasPayment === "true";
     }
 
     // Get total count for pagination
@@ -163,23 +119,12 @@ export async function GET(req: NextRequest) {
       ? []
       : await prisma.lead.findMany({
           where: query,
-          include: {
-            package: { select: { id: true, packageName: true, serviceName: true } },
-          },
           orderBy: { createdAt: "desc" },
           skip,
           take: limit,
         });
 
-    // Preserve the Mongoose populate("packageId") contract: the API field
-    // `packageId` holds the populated package object (or null).
-    const serializedLeads = leads.map((lead) => {
-      const { package: pkg, ...rest } = lead;
-      return withMongoId({
-        ...rest,
-        packageId: pkg ? withMongoId(pkg) : rest.packageId,
-      });
-    });
+    const serializedLeads = leads.map((lead) => withMongoId(lead));
 
     // Calculate pagination info
     const totalPages = Math.ceil(total / limit);

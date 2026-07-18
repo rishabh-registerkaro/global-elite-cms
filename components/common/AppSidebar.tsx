@@ -146,11 +146,6 @@ const navigationItems = [
         icon: Database,
       },
       {
-        title: "Registrations",
-        url: "/dashboard/registrations",
-        icon: Contact,
-      },
-      {
         title: "Users",
         url: "/dashboard/users",
         icon: Users,

@@ -28,32 +28,6 @@ enum LeadStatus {
   lost
 }
 
-enum PaymentStatus {
-  pending
-  success
-  failed
-}
-
-enum PackageTier {
-  free
-  basic
-  pro
-  enterprise
-}
-
-enum BillingCycle {
-  one_time @map("one-time")
-  monthly
-  yearly
-}
-
-enum PageSource {
-  home
-  contact
-  about
-  blog
-}
-
 // ─────────────────────────── Models ───────────────────────────
 
 model User {
@@ -115,34 +89,16 @@ model Category {
 }
 
 model Lead {
-  id              String         @id @default(cuid())
-  name            String
-  email           String
-  phoneNo         String
-  companyName     String?
-  region          String
-  serviceSelected String
-  message         String?        @db.Text
-  status          LeadStatus     @default(new)
-  leadSource      String         @default("Website")
-
-  // Payment (filled only if user pays)
-  hasPayment        Boolean         @default(false)
-  packageId         String?
-  package           ServicePackage? @relation(fields: [packageId], references: [id])
-  packageName       String?
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  razorpaySignature String?
-  paymentStatus     PaymentStatus?
-  amount            Int? // smallest currency unit (paise/cents)
-  currency          String?
-  paymentMethod     String?
-  paidAt            DateTime?
-
-  // Admin
-  adminNotes      String?   @db.Text
-  lastContactedAt DateTime?
+  id      String     @id @default(cuid())
+  name    String
+  email   String
+  phoneNo String
+  status  LeadStatus @default(new)
+  // Which website form this lead came from (e.g. "Contact — Request a Quote")
+  leadSource String @default("Website")
+  // Form-specific fields as {"Field Label": value} pairs — differs per form
+  // (dropdowns, subject, message…), so new forms never need schema changes.
+  formData Json? @map("form_data")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -150,43 +106,6 @@ model Lead {
   @@index([status])
   @@index([email])
   @@map("leads")
-}
-
-model ServicePackage {
-  id            String       @id @default(cuid())
-  serviceName   String
-  packageName   String
-  packageTier   PackageTier
-  // array of {region, currency, price, displayPrice}
-  priceVariants Json
-  description   String?      @db.Text
-  // array of strings
-  features      Json
-  isActive      Boolean      @default(true)
-  isPopular     Boolean      @default(false)
-  displayOrder  Int          @default(0)
-  billingCycle  BillingCycle @default(one_time)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  leads Lead[]
-
-  @@unique([serviceName, packageName])
-  @@index([serviceName])
-  @@map("service_packages")
-}
-
-model Registration {
-  id         String     @id @default(cuid())
-  email      String
-  pageSource PageSource
-  pageUrl    String     @db.Text
-  metadata   Json?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-
-  @@index([email])
-  @@map("registrations")
 }
 
 model Otp {

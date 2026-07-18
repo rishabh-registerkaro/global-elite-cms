@@ -30,9 +30,7 @@ export default function ViewLead({ lead }: ViewLeadProps) {
 
       <div className="space-y-4">
         <Item label="Phone" value={lead.phoneNo} />
-        <Item label="Topic" value={lead.serviceSelected || "-"} />
-        <Item label="Lead Source" value={lead.leadSource || "-"} />
-        {lead.message && <MessageItem message={lead.message} />}
+        <Item label="Submitted From" value={lead.leadSource || "-"} />
 
         <Item label="Status" value={lead.status} badge={true} />
 
@@ -41,15 +39,30 @@ export default function ViewLead({ lead }: ViewLeadProps) {
           value={new Date(lead.createdAt).toLocaleString()}
         />
       </div>
-    </div>
-  );
-}
 
-function MessageItem({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col gap-1.5 border-b border-slate-700 py-2">
-      <span className="text-slate-400 text-sm">Message</span>
-      <p className="text-white text-sm leading-relaxed whitespace-pre-wrap">{message}</p>
+      {/* Form-specific fields — whatever {"Field Label": value} pairs the
+          submitting form sent; new forms show up here automatically. */}
+      {lead.formData && Object.keys(lead.formData).length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-indigo-300 uppercase tracking-wide mb-2">
+            Form Details
+          </h3>
+          <div className="space-y-1">
+            {Object.entries(lead.formData).map(([label, value]) =>
+              String(value ?? "").length > 60 ? (
+                <div key={label} className="flex flex-col gap-1.5 border-b border-slate-700 py-2">
+                  <span className="text-slate-400 text-sm">{label}</span>
+                  <p className="text-white text-sm leading-relaxed whitespace-pre-wrap">
+                    {String(value)}
+                  </p>
+                </div>
+              ) : (
+                <Item key={label} label={label} value={String(value ?? "-")} />
+              )
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

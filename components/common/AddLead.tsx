@@ -23,8 +23,7 @@ export default function AddLeadForm({ onCreate }: Props) {
     name: "",
     email: "",
     phoneNo: "",
-    companyName: "",
-    serviceSelected: "",
+    topic: "",
     status: "new",
   });
 
@@ -62,20 +61,12 @@ export default function AddLeadForm({ onCreate }: Props) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>Company</Label>
+        <Label>Topic</Label>
         <Input
           className="bg-slate-800 border-slate-700 text-white"
-          value={form.companyName}
-          onChange={(e) => updateField("companyName", e.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Service</Label>
-        <Input
-          className="bg-slate-800 border-slate-700 text-white"
-          value={form.serviceSelected}
-          onChange={(e) => updateField("serviceSelected", e.target.value)}
+          placeholder="What is this lead about?"
+          value={form.topic}
+          onChange={(e) => updateField("topic", e.target.value)}
         />
       </div>
 
@@ -99,7 +90,16 @@ export default function AddLeadForm({ onCreate }: Props) {
 
       <Button
         className="w-full bg-indigo-500 hover:bg-indigo-600 mt-3"
-        onClick={() => onCreate(form)}
+        onClick={() =>
+          onCreate({
+            name: form.name,
+            email: form.email,
+            phoneNo: form.phoneNo,
+            status: form.status,
+            leadSource: "Manual entry",
+            formData: form.topic.trim() ? { Topic: form.topic.trim() } : undefined,
+          })
+        }
       >
         Save
       </Button>

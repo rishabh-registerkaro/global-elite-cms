@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Lead } from "@/app/types/lead";
 import { Label } from "../ui/label";
@@ -63,17 +62,6 @@ export default function EditLeadForm({ lead, onSave }: EditLeadFormProps) {
         />
       </div>
 
-      {/* TOPIC / SERVICE */}
-      <div className="space-y-2">
-        <Label className="text-slate-300" htmlFor="serviceSelected">Topic</Label>
-        <Input
-          id="serviceSelected"
-          value={form.serviceSelected ?? ""}
-          onChange={(e) => handleChange("serviceSelected", e.target.value)}
-          className="bg-slate-800 border-slate-700 text-white"
-        />
-      </div>
-
       {/* SOURCE */}
       <div className="space-y-2">
         <Label className="text-slate-300" htmlFor="leadSource">Source</Label>
@@ -111,18 +99,6 @@ export default function EditLeadForm({ lead, onSave }: EditLeadFormProps) {
             <SelectItem value="lost">Lost</SelectItem>
           </SelectContent>
         </Select>
-      </div>
-
-      {/* MESSAGE */}
-      <div className="space-y-2">
-        <Label className="text-slate-300" htmlFor="message">Message</Label>
-        <Textarea
-          id="message"
-          value={form.message ?? ""}
-          onChange={(e) => handleChange("message", e.target.value)}
-          rows={3}
-          className="bg-slate-800 border-slate-700 text-white resize-none"
-        />
       </div>
 
       <SheetFooter>

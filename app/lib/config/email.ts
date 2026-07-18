@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 
-function createNotifyTransporter() {
+// Kept for admin notification emails (e.g. future "new lead" alerts).
+export function createNotifyTransporter() {
   const user = process.env.NOTIFY_SMTP_USER || process.env.SMTP_USER;
   const pass = process.env.NOTIFY_SMTP_PASSWORD || process.env.SMTP_PASSWORD;
   const host = process.env.NOTIFY_SMTP_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -9,179 +10,16 @@ function createNotifyTransporter() {
   return nodemailer.createTransport({ host, port, secure, auth: { user: user!, pass: pass! } });
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  home:    "Home Page (Early Access)",
-  contact: "Contact Page (Quarterly Note)",
-  about:   "About Page",
-  blog:    "Blog Post",
-};
-
-export async function sendRegistrationNotification(data: {
-  email: string;
-  pageSource: string;
-  pageUrl: string;
-  metadata?: Record<string, unknown>;
-}) {
-  const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
-  if (!adminEmail) {
-    console.warn("ADMIN_NOTIFY_EMAIL not set — skipping admin notification");
-    return;
-  }
-
-  const from = process.env.NOTIFY_SMTP_FROM || process.env.SMTP_FROM;
-  const t = createNotifyTransporter();
-
-  // Escape any user-supplied string before injecting into HTML
-  const esc = (s: string) =>
-    String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  const sourceLabel = SOURCE_LABELS[data.pageSource] ?? data.pageSource;
-  const products = (data.metadata?.selectedProducts as string[] | undefined) ?? [];
-
-  const now = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-
-  const row = (label: string, value: string, last = false) => `
-    <tr>
-      <td style="padding:14px 0;color:#94a3b8;font-size:13px;font-weight:500;width:110px;vertical-align:top;${last ? "" : "border-bottom:1px solid #1f2a44;"}">${label}</td>
-      <td style="padding:14px 0;color:#f1f5f9;font-size:14px;font-weight:600;vertical-align:top;${last ? "" : "border-bottom:1px solid #1f2a44;"}">${value}</td>
-    </tr>
-  `;
-
-  const productsRow = products.length
-    ? row("Products", products.map(esc).join(", "))
-    : "";
-
-  const pageUrlRow = data.pageSource === "blog"
-    ? row("Page URL", `<span style="color:#a5b4fc;">${esc(data.pageUrl)}</span>`)
-    : "";
-
-  const cc = process.env.NOTIFY_CC_EMAIL || adminEmail;
-
-  await t.sendMail({
-    from,
-    to: adminEmail,
-    cc,
-    replyTo: data.email,
-    subject: `New interest — ${sourceLabel}`,
-    html: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark light">
-  <meta name="supported-color-schemes" content="dark light">
-  <title>New Interest Registered</title>
-</head>
-<body style="margin:0;padding:0;background:#0b1220;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:#f1f5f9;">
-
-  <!-- Preheader (hidden, shows in inbox preview) -->
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">
-    ${esc(data.email)} just expressed interest via ${esc(sourceLabel)}.
-  </div>
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0b1220;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
-
-          <!-- Brand strip -->
-          <tr>
-            <td style="padding:0 6px 18px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="font-size:13px;font-weight:700;color:#cbd5e1;letter-spacing:0.02em;">
-                    <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>Global Elite CMS
-                  </td>
-                  <td align="right" style="font-size:12px;color:#64748b;font-weight:500;">${esc(now)} IST</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Card -->
-          <tr>
-            <td style="background:#111c30;border-radius:14px;overflow:hidden;border:1px solid #1f2a44;">
-
-              <!-- Gradient accent -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr><td style="background:linear-gradient(135deg,#3b82f6 0%,#6366f1 50%,#8b5cf6 100%);height:4px;line-height:0;font-size:0;">&nbsp;</td></tr>
-              </table>
-
-              <!-- Header -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="padding:32px 36px 4px;">
-                    <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#818cf8;">Notification</p>
-                    <h1 style="margin:0;font-size:24px;line-height:1.3;font-weight:700;color:#f8fafc;">New interest registered</h1>
-                    <p style="margin:10px 0 0;font-size:14px;color:#94a3b8;line-height:1.55;">A visitor just expressed interest through website. Details below.</p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Details -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="padding:24px 36px 8px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #1f2a44;">
-                      ${row("Email", `<a href="mailto:${esc(data.email)}" style="color:#a5b4fc;text-decoration:none;">${esc(data.email)}</a>`)}
-                      ${row("Source", esc(sourceLabel))}
-                      ${pageUrlRow}
-                      ${productsRow}
-                      ${row("Time", `${esc(now)} IST`, true)}
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:24px 6px 0;text-align:center;">
-              <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">GLOBAL ELITE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
-              <p style="margin:0;font-size:11px;color:#64748b;line-height:1.6;">
-                Automated notification · Please do not reply to this email<br>
-                You're receiving this because you're listed as an admin contact for Global Elite CMS.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`,
-  });
-}
-
+// Auth transporter (OTP / password-reset emails)
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-        user: process.env.SMTP_USER!,
-        pass: process.env.SMTP_PASSWORD!,
-    }
-})
-
-
-/**
- * Send OTP email to user
- * @param email - Recipient email address
- * @param otp - 6-digit OTP code
- * @returns Promise with email info
- * another test
- */
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: process.env.SMTP_SECURE === "true",
+  auth: {
+    user: process.env.SMTP_USER!,
+    pass: process.env.SMTP_PASSWORD!,
+  },
+});
 
 export async function sendOTP(email: string, otp: string) {
     try {
