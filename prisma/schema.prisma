@@ -69,6 +69,8 @@ model Post {
   @@index([status])
   @@index([authorId])
   @@index([status, publishedAt])
+  // Paginated dashboard listing sorts by newest first
+  @@index([createdAt])
   @@map("posts")
 }
 
@@ -85,6 +87,8 @@ model Category {
   updatedAt DateTime @updatedAt
 
   @@index([parentId])
+  // Paginated dashboard listing sorts by newest first
+  @@index([createdAt])
   @@map("categories")
 }
 
@@ -105,6 +109,9 @@ model Lead {
 
   @@index([status])
   @@index([email])
+  // Paginated dashboard listing: newest first, optionally filtered by status
+  @@index([createdAt])
+  @@index([status, createdAt])
   @@map("leads")
 }
 
@@ -136,6 +143,8 @@ model MediaAsset {
   url          String   @db.Text
   createdAt    DateTime @default(now())
 
+  // Paginated media grid sorts by newest first
+  @@index([createdAt])
   @@map("media_assets")
 }
 
@@ -205,6 +214,10 @@ model ServicePage {
   updatedAt       DateTime      @updatedAt
 
   @@index([status])
+  // Paginated dashboard listing sorts by newest first
+  @@index([createdAt])
+  // "Recent services" widget + sitemap sort by last update
+  @@index([updatedAt])
   @@map("service_pages")
 }
 
