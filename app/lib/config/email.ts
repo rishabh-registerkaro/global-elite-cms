@@ -21,6 +21,126 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+const escapeHtml = (s: unknown) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+/**
+ * Notify the admin (ADMIN_NOTIFY_EMAIL, cc NOTIFY_CC_EMAIL when set) that a
+ * new lead was submitted through a website form. Never throws — a failed
+ * email must not fail the lead submission.
+ */
+export async function sendLeadNotification(lead: {
+  name: string;
+  email: string;
+  phoneNo: string;
+  leadSource: string;
+  formData?: Record<string, string> | null;
+  createdAt?: Date;
+}) {
+  try {
+    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
+    if (!adminEmail) {
+      console.warn("ADMIN_NOTIFY_EMAIL not set — skipping lead notification");
+      return;
+    }
+    const cc = process.env.NOTIFY_CC_EMAIL || undefined;
+
+    const row = (label: string, value: string, link?: string) => `
+      <tr>
+        <td style="padding:10px 16px;font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;">${label}</td>
+        <td style="padding:10px 16px;font-size:14px;color:#f1f5f9;font-weight:600;word-break:break-word;">${
+          link ? `<a href="${link}" style="color:#a5b4fc;text-decoration:none;">${value}</a>` : value
+        }</td>
+      </tr>`;
+
+    const detailRows = Object.entries(lead.formData ?? {})
+      .map(([label, value]) => row(escapeHtml(label).toUpperCase(), escapeHtml(value)))
+      .join("");
+
+    const when = (lead.createdAt ?? new Date()).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#0f172a;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:32px 16px;">
+      <tr><td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+          <tr>
+            <td style="padding:0 4px 14px;font-size:13px;font-weight:700;color:#e2e8f0;">
+              <span style="display:inline-block;width:8px;height:8px;background:#22c55e;border-radius:50%;margin-right:8px;"></span>Global Elite CMS
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#1e293b;border:1px solid #334155;border-radius:14px;overflow:hidden;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding:22px 24px;border-bottom:1px solid #334155;">
+                    <div style="font-size:12px;font-weight:700;letter-spacing:0.1em;color:#818cf8;">NEW LEAD RECEIVED</div>
+                    <div style="font-size:20px;font-weight:800;color:#f8fafc;margin-top:6px;">${escapeHtml(lead.name)}</div>
+                    <div style="font-size:13px;color:#94a3b8;margin-top:4px;">${escapeHtml(lead.leadSource)} • ${escapeHtml(when)} IST</div>
+                  </td>
+                </tr>
+                ${row("EMAIL", escapeHtml(lead.email), `mailto:${escapeHtml(lead.email)}`)}
+                ${row("PHONE", escapeHtml(lead.phoneNo), `tel:${escapeHtml(lead.phoneNo.replace(/[^\d+]/g, ""))}`)}
+                ${row("SUBMITTED FROM", escapeHtml(lead.leadSource))}
+                ${
+                  detailRows
+                    ? `<tr><td colspan="2" style="padding:14px 16px 4px;font-size:11px;font-weight:800;letter-spacing:0.12em;color:#818cf8;border-top:1px solid #334155;">FORM DETAILS</td></tr>${detailRows}`
+                    : ""
+                }
+                <tr>
+                  <td colspan="2" style="padding:16px 24px 20px;border-top:1px solid #334155;">
+                    <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">Open your CMS dashboard → <strong style="color:#cbd5e1;">Leads</strong> to view, contact or update this lead.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 4px 0;">
+              <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#cbd5e1;letter-spacing:0.02em;">GLOBAL ELITE TECHNOLOGIES (OPC) PRIVATE LIMITED</p>
+              <p style="margin:0;font-size:11.5px;color:#64748b;line-height:1.6;">You're receiving this because you're listed as an admin contact for Global Elite CMS.</p>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+
+    const text = [
+      `New lead received — ${lead.leadSource}`,
+      ``,
+      `Name: ${lead.name}`,
+      `Email: ${lead.email}`,
+      `Phone: ${lead.phoneNo}`,
+      ...Object.entries(lead.formData ?? {}).map(([k, v]) => `${k}: ${v}`),
+      ``,
+      `Received: ${when} IST`,
+    ].join("\n");
+
+    await createNotifyTransporter().sendMail({
+      from: process.env.NOTIFY_SMTP_FROM || process.env.SMTP_FROM,
+      to: adminEmail,
+      cc,
+      subject: `New lead: ${lead.name} — ${lead.leadSource}`,
+      text,
+      html,
+    });
+  } catch (error) {
+    console.error("Failed to send lead notification email:", error);
+  }
+}
+
 export async function sendOTP(email: string, otp: string) {
     try {
         if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
