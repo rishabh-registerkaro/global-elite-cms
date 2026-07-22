@@ -50,10 +50,14 @@ export async function sendLeadNotification(lead: {
     }
     const cc = process.env.NOTIFY_CC_EMAIL || undefined;
 
+    // Label stacked ABOVE the value in a single full-width column — two-column
+    // rows collapse badly on mobile mail clients (one character per line).
     const row = (label: string, value: string, link?: string) => `
       <tr>
-        <td style="padding:10px 16px;font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:0.04em;white-space:nowrap;vertical-align:top;">${label}</td>
-        <td style="padding:10px 16px;font-size:14px;color:#f1f5f9;font-weight:600;word-break:break-word;">${
+        <td colspan="2" style="padding:12px 24px 0;font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:0.08em;">${label}</td>
+      </tr>
+      <tr>
+        <td colspan="2" style="padding:3px 24px 12px;font-size:14.5px;color:#f1f5f9;font-weight:600;line-height:1.5;word-break:break-word;">${
           link ? `<a href="${link}" style="color:#a5b4fc;text-decoration:none;">${value}</a>` : value
         }</td>
       </tr>`;
@@ -94,7 +98,7 @@ export async function sendLeadNotification(lead: {
                 ${row("SUBMITTED FROM", escapeHtml(lead.leadSource))}
                 ${
                   detailRows
-                    ? `<tr><td colspan="2" style="padding:14px 16px 4px;font-size:11px;font-weight:800;letter-spacing:0.12em;color:#818cf8;border-top:1px solid #334155;">FORM DETAILS</td></tr>${detailRows}`
+                    ? `<tr><td colspan="2" style="padding:16px 24px 0;font-size:11px;font-weight:800;letter-spacing:0.12em;color:#818cf8;border-top:1px solid #334155;">FORM DETAILS</td></tr>${detailRows}`
                     : ""
                 }
                 <tr>
