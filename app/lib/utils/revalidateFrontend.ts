@@ -28,3 +28,13 @@ export async function revalidateFrontendTags(tags: string[]): Promise<void> {
 }
 
 export const serviceTags = (slug: string) => ["service-list", `service-${slug}`];
+
+/**
+ * A package block is injected into other pages, so clearing it must clear every
+ * page it targets — plus `package-list` for anything listing blocks. On rename
+ * or retarget, pass the union of the old and new target pages.
+ */
+export const packageTags = (targetPages: string[]) => [
+  "package-list",
+  ...targetPages.filter(Boolean).map((p) => `packages-${p}`),
+];

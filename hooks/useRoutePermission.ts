@@ -13,6 +13,9 @@ const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/dashboard/services": ADMIN_ROLES,
   "/dashboard/services/create-service": ADMIN_ROLES,
   "/dashboard/services/update-service": ADMIN_ROLES, // This will match any update-service route
+  "/dashboard/packages": ADMIN_ROLES,
+  "/dashboard/packages/create-package": ADMIN_ROLES,
+  "/dashboard/packages/update-package": ADMIN_ROLES,
   "/dashboard/blog": ["superadmin", "admin", "editor", "contributor"],
   "/dashboard/blog/create-blog": ["superadmin", "admin", "editor"],
   "/dashboard/blog/update-blog": ["superadmin", "admin", "editor"],

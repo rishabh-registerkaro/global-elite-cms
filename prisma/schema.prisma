@@ -39,8 +39,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  posts        Post[]
-  servicePages ServicePage[]
+  posts         Post[]
+  servicePages  ServicePage[]
+  packageBlocks PackageBlock[]
 
   @@map("users")
 }
@@ -219,6 +220,34 @@ model ServicePage {
   // "Recent services" widget + sitemap sort by last update
   @@index([updatedAt])
   @@map("service_pages")
+}
+
+model PackageBlock {
+  id       String @id @default(cuid())
+  slug     String @unique
+  title    String @db.VarChar(500)
+  // Page slugs this block is injected into, e.g. ["travel", "education"].
+  // Free-text on purpose: a block can be prepared before its page exists.
+  targetPages Json @map("target_pages")
+  // Entire block as one flexible document (header + tabs + packages).
+  // Shape: app/lib/content/package-content.ts → PackageBlockContent
+  content  Json
+  status   PublishStatus @default(draft)
+  // Frontend on/off switch, independent of `status`: lets an admin pull a
+  // published block off the live pages (seasonal, sold out, being rewritten)
+  // without reverting it to draft or deleting it.
+  visible  Boolean       @default(true)
+  authorId String
+  author   User          @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  // Paginated dashboard listing sorts by newest first
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("package_blocks")
 }
 
 model AboutPage {
