@@ -142,3 +142,20 @@
 .prose pre {
   @apply bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-x-auto;
 }
+
+/* Text selection.
+   The dashboard is dark slate panels with dark inputs, where the browser's
+   default selection highlight is nearly invisible — you can't tell what you've
+   selected in a slug or content field. One global rule fixes every input,
+   textarea and block of copy at once; the explicit input/textarea selectors are
+   belt-and-braces against other rules winning on specificity. */
+::selection {
+  background-color: #6366f1; /* indigo-500 — the dashboard accent */
+  color: #ffffff;
+}
+
+input::selection,
+textarea::selection {
+  background-color: #6366f1;
+  color: #ffffff;
+}

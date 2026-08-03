@@ -17,6 +17,7 @@
 
 /** Icon keys exported by Global-Elite/app/components/tourpackages/icons.tsx */
 export const PACKAGE_ICON_NAMES = [
+  // travel
   "plane",
   "building-2",
   "palmtree",
@@ -29,6 +30,17 @@ export const PACKAGE_ICON_NAMES = [
   "users",
   "bed-double",
   "utensils",
+  // business / marketing — the same block is used on non-travel service pages
+  "target",
+  "bar-chart",
+  "rocket",
+  "megaphone",
+  "bot",
+  "cpu",
+  "briefcase",
+  "globe",
+  "shield-check",
+  "clock",
 ] as const;
 
 /** Icon keys that read well on a small stat tile */
@@ -39,6 +51,12 @@ export const PACKAGE_STAT_ICON_NAMES = [
   "plane",
   "landmark",
   "tent",
+  "target",
+  "bar-chart",
+  "rocket",
+  "clock",
+  "shield-check",
+  "briefcase",
 ] as const;
 
 /** Brand gradients (resolved to CSS by the frontend `GRAD` map) */
