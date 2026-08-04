@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Copy,
   Eye,
   EyeOff,
   FileText,
@@ -93,6 +94,21 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title?: string 
       className="text-red-400 hover:text-red-300 hover:bg-red-400/20 shrink-0"
     >
       <Trash2 className="h-4 w-4" />
+    </Button>
+  );
+}
+
+function DuplicateButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={onClick}
+      title={title}
+      className="text-indigo-300 hover:text-indigo-200 hover:bg-indigo-400/20 shrink-0"
+    >
+      <Copy className="h-4 w-4" />
     </Button>
   );
 }
@@ -598,6 +614,29 @@ const typeSlug = (t: string) =>
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-{2,}/g, "-");
 
+/** The id a row will actually be saved with — explicit id wins, else the label. */
+const effectiveId = (id: string, label: string) =>
+  packageSlugify(id) || packageSlugify(label);
+
+/**
+ * "<base>-copy", "<base>-copy-2"… — the first id not already in `existing`.
+ *
+ * A copy gets a real id up front rather than an empty one: two copies of the
+ * same row would otherwise both slugify their "(Copy)" title to the same value,
+ * and ids must be unique within their tab (packages) and block (tabs) — the
+ * frontend uses them as React keys and as the open-card / active-tab target.
+ */
+const copyId = (existing: string[], base: string) => {
+  const taken = new Set(existing.filter(Boolean));
+  const root = `${base || "item"}-copy`;
+  if (!taken.has(root)) return root;
+  for (let n = 2; n <= taken.size + 2; n++) {
+    const candidate = `${root}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${root}-${taken.size + 3}`;
+};
+
 export default function PackageBlockForm({
   mode,
   initialData,
@@ -704,6 +743,85 @@ export default function PackageBlockForm({
     if (target < 0 || target >= packages.length) return;
     [packages[pi], packages[target]] = [packages[target], packages[pi]];
     setTab(ti, { packages });
+  };
+
+  // ── Duplicate ─────────────────────────────────────────────────────────────
+  // Copying a row beats retyping it. The copy is inserted directly below its
+  // source and opened, with a fresh unique id so the two never clash.
+  //
+  // Both open/closed maps are keyed by index ({ 2: true }, { "0-1": true }), so
+  // an insert has to shift every key after the insertion point — otherwise the
+  // wrong rows would appear expanded.
+
+  const duplicatePackage = (ti: number, pi: number) => {
+    const packages = [...content.tabs[ti].packages];
+    const source = packages[pi];
+    if (!source) return;
+
+    packages.splice(pi + 1, 0, {
+      ...structuredClone(source),
+      id: copyId(
+        packages.map((p) => effectiveId(p.id, p.title)),
+        effectiveId(source.id, source.title)
+      ),
+      title: source.title.trim() ? `${source.title.trim()} (Copy)` : "",
+    });
+    setTab(ti, { packages });
+
+    setOpenPackages((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const [key, open] of Object.entries(prev)) {
+        const [t, p] = key.split("-").map(Number);
+        next[t === ti && p > pi ? `${t}-${p + 1}` : key] = open;
+      }
+      next[`${ti}-${pi + 1}`] = true;
+      return next;
+    });
+
+    toast.success("Package duplicated — edit the copy below", { closeButton: true });
+  };
+
+  const duplicateTab = (i: number) => {
+    const tabs = [...content.tabs];
+    const source = tabs[i];
+    if (!source) return;
+
+    // Package ids only need to be unique within their own tab, so the copied
+    // packages keep theirs — only the tab id has to be new.
+    tabs.splice(i + 1, 0, {
+      ...structuredClone(source),
+      id: copyId(
+        tabs.map((t) => effectiveId(t.id, t.label)),
+        effectiveId(source.id, source.label)
+      ),
+      label: source.label.trim() ? `${source.label.trim()} (Copy)` : "",
+    });
+    setContent({ tabs });
+
+    setOpenTabs((prev) => {
+      const next: Record<number, boolean> = {};
+      for (const [key, open] of Object.entries(prev)) {
+        const t = Number(key);
+        next[t > i ? t + 1 : t] = open;
+      }
+      next[i + 1] = true;
+      return next;
+    });
+    setOpenPackages((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const [key, open] of Object.entries(prev)) {
+        const [t, p] = key.split("-").map(Number);
+        next[`${t > i ? t + 1 : t}-${p}`] = open;
+      }
+      return next;
+    });
+
+    toast.success(
+      `Tab duplicated with ${source.packages.length} package${
+        source.packages.length === 1 ? "" : "s"
+      }`,
+      { closeButton: true }
+    );
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -1085,6 +1203,10 @@ export default function PackageBlockForm({
                         onUp={() => moveTab(ti, -1)}
                         onDown={() => moveTab(ti, 1)}
                       />
+                      <DuplicateButton
+                        onClick={() => duplicateTab(ti)}
+                        title="Duplicate this tab and all its packages"
+                      />
                       <RemoveButton
                         onClick={() =>
                           setContent({ tabs: content.tabs.filter((_, idx) => idx !== ti) })
@@ -1152,6 +1274,10 @@ export default function PackageBlockForm({
                                         canDown={pi < tab.packages.length - 1}
                                         onUp={() => movePackage(ti, pi, -1)}
                                         onDown={() => movePackage(ti, pi, 1)}
+                                      />
+                                      <DuplicateButton
+                                        onClick={() => duplicatePackage(ti, pi)}
+                                        title="Duplicate this package"
                                       />
                                       <RemoveButton
                                         onClick={() =>

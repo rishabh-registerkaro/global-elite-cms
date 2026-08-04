@@ -1,10 +1,24 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Trash2, FilePenLine, RefreshCw } from "lucide-react";
+import {
+  Trash2,
+  FilePenLine,
+  RefreshCw,
+  MoreVertical,
+  Copy,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -52,6 +66,8 @@ export default function PackagesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   /** Slug of the block whose visibility is mid-flight, to disable its switch */
   const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
+  /** Slug being duplicated, so the row's menu can show progress */
+  const [duplicatingSlug, setDuplicatingSlug] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo>({
     currentPage: 1,
     totalPages: 1,
@@ -102,7 +118,6 @@ export default function PackagesPage() {
     toast.warning("Are you sure you want to delete this package block?", {
       description: "It will be removed from every page it appears on. This cannot be undone.",
       duration: 6000,
-      className: "!bg-transparent !text-white !border-gray-200",
       closeButton: true,
       action: {
         label: "Delete",
@@ -118,13 +133,11 @@ export default function PackagesPage() {
             if (res.ok) {
               toast.success("Package block deleted successfully!", {
                 duration: 3000,
-                className: "!bg-transparent !text-white !border-gray-200",
               });
               fetchBlocks(pagination.currentPage);
             } else {
               toast.error(data.message || "Failed to delete package block", {
                 duration: 3000,
-                className: "!bg-transparent !text-white !border-gray-200",
               });
             }
           } catch (error) {
@@ -165,6 +178,44 @@ export default function PackagesPage() {
       toast.error("Failed to change visibility", { closeButton: true });
     } finally {
       setTogglingSlug(null);
+    }
+  };
+
+  // Copy a whole block — tabs, packages, wording, target pages — into a new
+  // draft, so a near-identical block never has to be rebuilt from scratch.
+  // The copy is always a draft, so nothing changes on the live site.
+  const handleDuplicate = async (block: PackageBlock) => {
+    if (duplicatingSlug) return;
+    setDuplicatingSlug(block.slug);
+    const toastId = toast.loading("Duplicating block...");
+    try {
+      const res = await fetch(`/api/packages/${block.slug}/duplicate`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success("Duplicated as a draft", {
+          id: toastId,
+          description:
+            "Review the title and target pages before publishing — the copy targets the same pages as the original.",
+          duration: 6000,
+          closeButton: true,
+        });
+        // A "Published" filter would hide the new draft, making the click look
+        // like it did nothing — widen it so the copy is actually visible.
+        if (statusFilter === "published") setStatusFilter("");
+        // The copy is the newest row, so it lands at the top of page 1
+        fetchBlocks(1);
+      } else {
+        toast.error(data.message || "Failed to duplicate block", { id: toastId });
+      }
+    } catch (error) {
+      console.error("Error duplicating package block:", error);
+      toast.error("Failed to duplicate block", { id: toastId });
+    } finally {
+      setDuplicatingSlug(null);
     }
   };
 
@@ -280,8 +331,7 @@ export default function PackagesPage() {
                       <div className="h-4 bg-slate-700 rounded animate-pulse w-32"></div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-center gap-2">
-                        <div className="h-8 w-8 bg-slate-700 rounded animate-pulse"></div>
+                      <div className="flex justify-center">
                         <div className="h-8 w-8 bg-slate-700 rounded animate-pulse"></div>
                       </div>
                     </TableCell>
@@ -385,36 +435,70 @@ export default function PackagesPage() {
                           : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              window.location.href = `/dashboard/packages/update-package?slug=${block.slug}`;
-                            }}
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/20 cursor-pointer"
-                          >
-                            <FilePenLine className="w-4 h-4" />
-                          </Button>
-                          {block.status === "published" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRevalidate(targets)}
-                              title="Clear frontend cache for the pages this block appears on"
-                              className="text-amber-400 hover:text-amber-300 hover:bg-amber-400/20 cursor-pointer"
+                        <div className="flex justify-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Actions"
+                                aria-label={`Actions for ${block.title || block.slug}`}
+                                className="text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
+                              >
+                                {duplicatingSlug === block.slug ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <MoreVertical className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="w-56 bg-slate-900 border-slate-700 text-white"
                             >
-                              <RefreshCw className="w-4 h-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(block.slug)}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-400/20 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  window.location.href = `/dashboard/packages/update-package?slug=${block.slug}`;
+                                }}
+                                className="text-slate-200 focus:bg-slate-800 focus:text-white cursor-pointer"
+                              >
+                                <FilePenLine className="mr-2 h-4 w-4 text-blue-400" />
+                                Edit
+                              </DropdownMenuItem>
+
+                              <DropdownMenuItem
+                                disabled={duplicatingSlug !== null}
+                                onClick={() => handleDuplicate(block)}
+                                className="text-slate-200 focus:bg-slate-800 focus:text-white cursor-pointer"
+                              >
+                                <Copy className="mr-2 h-4 w-4 text-indigo-400" />
+                                Duplicate
+                                <span className="ml-auto text-[11px] text-slate-500">
+                                  as draft
+                                </span>
+                              </DropdownMenuItem>
+
+                              {block.status === "published" && (
+                                <DropdownMenuItem
+                                  onClick={() => handleRevalidate(targets)}
+                                  className="text-slate-200 focus:bg-slate-800 focus:text-white cursor-pointer"
+                                >
+                                  <RefreshCw className="mr-2 h-4 w-4 text-amber-400" />
+                                  Clear frontend cache
+                                </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuSeparator className="bg-slate-700" />
+
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(block.slug)}
+                                className="text-red-400 focus:bg-red-500/10 focus:text-red-300 cursor-pointer"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>
