@@ -41,6 +41,9 @@ export default function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next|api|favicon.ico).*)",
+    // App-icon files are served from the app directory like any other route, so
+    // they must be exempted here or an unauthenticated request for the favicon
+    // is redirected to /login and the browser receives HTML instead of a PNG.
+    "/((?!_next|api|favicon.ico|icon.png|apple-icon.png).*)",
   ],
 };
