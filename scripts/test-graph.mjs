@@ -157,7 +157,7 @@ if (!to) {
 
 const message = {
   message: {
-    subject: "Global Elite CMS — Graph Mail.Send test",
+    subject: `Global Elite CMS — Graph test ${process.env.GRAPH_TEST_TAG || Math.floor(Date.now()/1000)}`,
     body: {
       contentType: "HTML",
       content:
@@ -166,7 +166,10 @@ const message = {
     },
     toRecipients: [{ emailAddress: { address: to } }],
   },
-  saveToSentItems: false,
+  // Save a copy so delivery can be traced: if it appears in the sender's Sent
+  // Items, Exchange accepted and processed it and the problem is downstream.
+  // If it never appears, it did not get past Graph.
+  saveToSentItems: true,
 };
 
 const res = await fetch(
